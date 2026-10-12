@@ -1,0 +1,130 @@
+services:
+  # =====================================================
+  # PostgreSQL 16 - Primary database
+  # =====================================================
+  postgres:
+    image: postgres:16
+    container_name: saas-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saas_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    # 日志轮转限制
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"   # 单个日志文件最大 10MB
+        max-file: "3"     # 最多保留3个轮转文件
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d saas_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # Redis 7 - Cache / BullMQ Queue / Rate Limit
+  # =====================================================
+  redis:
+    image: redis:7
+    container_name: saas-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    # 日志轮转限制
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # Mailpit - Local email testing (SMTP)
+  # =====================================================
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: saas-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  # =====================================================
+  # Worker - BullMQ background jobs (build from apps/worker/Dockerfile)
+  # =====================================================
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: saas-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =====================================================
+  # Optional dev tools (start with: docker compose --profile tools up -d)
+  # =====================================================
+
+  # pgAdmin - PostgreSQL web UI (login: admin@example.com / admin)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: saas-pgadmin
+    restart: unless-stopped
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # Disable the default login page in favour of basic auth-less dev mode
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Redis Insight - Redis GUI (http://localhost:5540)
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: saas-redis-insight
+    restart: unless-stopped
+    profiles: ["tools"]
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+  redisinsight_data:

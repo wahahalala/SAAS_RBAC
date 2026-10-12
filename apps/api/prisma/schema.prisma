@@ -1,0 +1,337 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Tenant (workspace / organization root)
+// ============================================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ownership / settings
+  plan      Plan     @default(free)
+  status    TenantStatus @default(active)
+  settings  Json?    // tenant-level settings blob
+
+  // Relations
+  organization Organization?
+  memberships  Membership[]
+  roles        Role[]
+  invitations  Invitation[]
+  auditLogs    AuditLog[]
+  subscriptions Subscription[]
+  usageRecords UsageRecord[]
+  notifications Notification[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  active
+  suspended
+  deleting
+}
+
+// ============================================
+// Organization (compatibility layer for the existing SaaS template)
+// 1:1 with Tenant; legacy code keeps using `organizations`.
+// ============================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  tenantId  String   @unique
+  name      String
+  slug      String   @unique
+  logo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("organizations")
+}
+
+// ============================================
+// User & Authentication
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?
+  name          String?
+  image         String?
+  emailVerified DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  accounts      Account[]
+  memberships   Membership[]
+  invitations   Invitation[]      @relation("InvitedBy")
+  refreshSessions RefreshSession[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model RefreshSession {
+  id          String    @id @default(uuid())
+  userId      String
+  tokenHash   String    @unique
+  device      String?
+  ipAddress   String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_sessions")
+}
+
+// ============================================
+// Multi-tenancy membership
+// ============================================
+
+model Membership {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("memberships")
+}
+
+// ============================================
+// RBAC
+// ============================================
+
+model Role {
+  id          String   @id @default(uuid())
+  tenantId    String?
+  name        String
+  key         String   // e.g. "admin", "member", "billing-manager"
+  description String?
+  isSystem    Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships     Membership[]
+  rolePermissions RolePermission[]
+
+  // System roles are unique per key; tenant roles are unique per (tenantId, key)
+  @@unique([key, tenantId])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique // e.g. "org:manage", "member:invite"
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(uuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// ============================================
+// Invitations
+// ============================================
+
+model Invitation {
+  id             String   @id @default(uuid())
+  tenantId       String
+  email          String
+  roleId         String?
+  roleKey        String   @default("member") // role key at invite time
+  token          String   @unique @default(uuid())
+  expiresAt      DateTime
+  invitedById    String
+  invitedByOrgId String?  // legacy org reference, optional
+  status         InvitationStatus @default(pending)
+  createdAt      DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User   @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("invitations")
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  expired
+  canceled
+}
+
+// ============================================
+// Billing & subscriptions
+// ============================================
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  tenantId             String
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  plan                 Plan               @default(free)
+  status               SubscriptionStatus @default(active)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+enum Plan {
+  free
+  pro
+  enterprise
+}
+
+enum SubscriptionStatus {
+  active
+  canceled
+  past_due
+  trialing
+  incomplete
+}
+
+model UsageRecord {
+  id        String   @id @default(uuid())
+  tenantId  String
+  metric    String   // e.g. "api.calls", "storage.bytes"
+  quantity  Int
+  recordedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, metric])
+  @@index([recordedAt])
+  @@map("usage_records")
+}
+
+// ============================================
+// Audit log
+// ============================================
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  tenantId       String
+  userId         String?
+  action         String
+  entity         String?
+  entityId       String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// Notifications
+// ============================================
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  tenantId  String?  // optional; global notifications have no tenant
+  type      String
+  title     String
+  message   String?
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([read])
+  @@map("notifications")
+}

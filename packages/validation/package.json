@@ -1,0 +1,29 @@
+{
+    "name": "@saas/validation",
+    "version": "0.0.1",
+    "private": true,
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts",
+        "./auth": "./src/auth.ts",
+        "./organization": "./src/organization.ts",
+        "./user": "./src/user.ts",
+        "./team": "./src/team.ts"
+    },
+    "scripts": {
+        "build": "tsc",
+        "type-check": "tsc --noEmit",
+        "lint": "eslint src/",
+        "clean": "rm -rf dist"
+    },
+    "dependencies": {
+        "@saas/shared-types": "workspace:*",
+        "zod": "^3.25.76"
+    },
+    "devDependencies": {
+        "@saas/eslint-config": "workspace:*",
+        "@saas/typescript-config": "workspace:*",
+        "typescript": "^5.7.2"
+    }
+}

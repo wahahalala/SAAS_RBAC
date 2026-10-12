@@ -1,0 +1,13 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "saas_db (local)",
+            "Group": "Servers",
+            "Host": "postgres",
+            "Port": 5432,
+            "Username": "postgres",
+            "SSLMode": "prefer",
+            "MaintenanceDB": "postgres"
+        }
+    }
+}

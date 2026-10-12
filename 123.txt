@@ -1,1 +1,0 @@
-Project positioning: A production ready enterprise level multi tenant SaaS platform scaffold based on open source SaaS template deep secondary transformation, which can be used as an open source project and job portfolio. Technology stack: Next.js15（App Router/RSC）、NestJS10、TypeScript、Prisma、PostgreSQL16、Redis7、BullMQ
