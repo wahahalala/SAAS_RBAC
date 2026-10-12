@@ -2,9 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma";
 import { ReportDataService } from "./report-data.service";
 import { ReportStorageService } from "./report-storage.service";
+import { DomainEventPublisher } from "@/events";
 import { toCsv } from "./csv.writer";
 import { toPdf } from "./pdf.writer";
-import type { GenerateReportJob } from "@saas/shared-types";
+import { DOMAIN_EVENTS, type GenerateReportJob } from "@saas/shared-types";
 
 /**
  * Executes one generate-report job: mark processing, build the artifact, record
@@ -23,6 +24,7 @@ export class ReportRunnerService {
         private readonly prisma: PrismaService,
         private readonly data: ReportDataService,
         private readonly storage: ReportStorageService,
+        private readonly domainEvents: DomainEventPublisher,
     ) {}
 
     async run(job: GenerateReportJob): Promise<void> {
@@ -87,6 +89,28 @@ export class ReportRunnerService {
             this.logger.log(
                 `Report ${reportId} (${reportType}/${format}) completed: ${stored.fileName} (${stored.fileSize} bytes, ${table.rows.length} rows)`,
             );
+
+            // Published AFTER the row is marked completed, so a listener can
+            // read the finished report. It is deliberately OUTSIDE the try
+            // below: the artifact is already written and recorded, and a
+            // notification failure must not rewrite that success into a failure
+            // (nor trigger a job retry that regenerates a file that exists).
+            await this.publishSafely(
+                {
+                    tenantId,
+                    actorId: job.requestedBy,
+                    reportId,
+                    reportType,
+                    format,
+                    status: "completed",
+                    rowCount: table.rows.length,
+                    fileSize: stored.fileSize,
+                    requestedById: job.requestedBy,
+                },
+                reportId,
+            );
+
+            return;
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : String(error);
@@ -107,8 +131,52 @@ export class ReportRunnerService {
                     );
                 });
 
+            // A failure is a fact worth auditing/alerting on, same as success.
+            await this.publishSafely(
+                {
+                    tenantId,
+                    actorId: job.requestedBy,
+                    reportId,
+                    reportType,
+                    format,
+                    status: "failed",
+                    rowCount: null,
+                    fileSize: null,
+                    error: message,
+                    requestedById: job.requestedBy,
+                },
+                reportId,
+            );
+
             this.logger.error(`Report ${reportId} failed: ${message}`);
             throw error;
+        }
+    }
+
+    /**
+     * Publish a domain event without letting a delivery problem change the
+     * report's outcome.
+     *
+     * The report row is already written by the time this runs: rewriting a
+     * completed report as failed (or failing the job so it regenerates a file
+     * that already exists) because a notification could not be queued would be
+     * strictly worse than a missing notification.
+     */
+    private async publishSafely(
+        payload: Record<string, unknown>,
+        reportId: string,
+    ): Promise<void> {
+        try {
+            await this.domainEvents.publish(
+                DOMAIN_EVENTS.REPORT_COMPLETED,
+                payload,
+            );
+        } catch (error) {
+            this.logger.error(
+                `Report ${reportId} finished but its domain event could not be published: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
         }
     }
 }

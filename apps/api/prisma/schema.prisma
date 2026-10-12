@@ -360,7 +360,13 @@ enum ReportStatus {
 
 model AuditLog {
   id             String   @id @default(uuid())
-  tenantId       String
+  /**
+   * Nullable: some auditable facts happen BEFORE any tenant exists (a fresh
+   * registration creates an account that belongs to no tenant yet). Making this
+   * required meant those rows were dropped, which is exactly the audit entry an
+   * operator most wants.
+   */
+  tenantId       String?
   userId         String?
   action         String
   entity         String?
@@ -370,7 +376,7 @@ model AuditLog {
   userAgent      String?
   createdAt      DateTime @default(now())
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])

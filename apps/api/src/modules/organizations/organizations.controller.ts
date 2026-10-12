@@ -172,7 +172,12 @@ export class OrganizationsController {
             throw new ForbiddenException("Admin access required");
         }
 
-        return this.organizationsService.updateMemberRole(slug, memberId, dto.role);
+        return this.organizationsService.updateMemberRole(
+            slug,
+            memberId,
+            dto.role,
+            user.id,
+        );
     }
 
     @Delete(":slug/members/:memberId")

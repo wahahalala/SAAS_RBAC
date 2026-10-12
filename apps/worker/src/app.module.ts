@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { BullModule } from "@nestjs/bullmq";
 import { PrismaModule } from "./prisma";
+import { EventsModule } from "./events";
 import { QueueModule } from "./queue/queue.module";
 import { WorkerModule } from "./worker/worker.module";
 import { HealthModule } from "./modules/health/health.module";
@@ -22,6 +23,7 @@ import { HealthModule } from "./modules/health/health.module";
             }),
         }),
         PrismaModule,
+        EventsModule,
         QueueModule,
         WorkerModule,
         HealthModule,

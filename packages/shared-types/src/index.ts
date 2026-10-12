@@ -11,3 +11,6 @@ export * from "./inputs";
 
 // BullMQ queue names, job names and payload contracts (API producer + worker)
 export * from "./queue";
+
+// Domain event names and payloads (API emitters + listeners + worker bridge)
+export * from "./events";

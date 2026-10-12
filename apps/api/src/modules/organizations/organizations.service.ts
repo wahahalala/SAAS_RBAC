@@ -11,6 +11,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { CacheService } from "@/modules/redis/cache.service";
 import { RedisKeys } from "@/modules/redis/keys";
 import { EmailQueueService } from "@/modules/queue";
+import { DomainEventsService } from "@/modules/events";
 import { TenantContext } from "@/modules/tenant";
 import {
     CreateOrganizationDto,
@@ -48,6 +49,7 @@ export class OrganizationsService {
         private readonly tenantContext: TenantContext,
         private readonly configService: ConfigService,
         private readonly emailQueue: EmailQueueService,
+        private readonly domainEvents: DomainEventsService,
     ) { }
 
     /**
@@ -70,7 +72,7 @@ export class OrganizationsService {
             where: { tenantId: null, key },
         });
 
-        return this.prisma.role.create({
+        const created = await this.prisma.role.create({
             data: {
                 tenantId,
                 key,
@@ -79,6 +81,14 @@ export class OrganizationsService {
                 isSystem: globalRole?.isSystem ?? false,
             },
         });
+
+        // A tenant role starts with NO permissions of its own. PermissionGuard
+        // resolves the caller's permissions from the TENANT role, so without
+        // copying the global role's grants a freshly provisioned tenant's admin
+        // would hold nothing — unable to invite members or export reports.
+        await this.copyRolePermissions(globalRole?.id, created.id, this.prisma);
+
+        return created;
     }
 
     /**
@@ -141,6 +151,16 @@ export class OrganizationsService {
             });
         });
 
+        // Emitted after the transaction committed: a rolled-back provisioning
+        // must not have announced a tenant.
+        this.domainEvents.tenantCreated({
+          tenantId,
+          actorId: userId,
+          tenantName: dto.name,
+          tenantSlug: slug,
+          ownerId: userId,
+        });
+
         // Read the row back for the response. This must NOT go through
         // findBySlug(): that resolves the slug within the CALLER's tenant
         // context, and provisioning runs with no tenant yet (the whole point
@@ -181,7 +201,7 @@ export class OrganizationsService {
             where: { tenantId: null, key },
         });
 
-        return tx.role.create({
+        const created = await tx.role.create({
             data: {
                 tenantId,
                 key,
@@ -189,6 +209,47 @@ export class OrganizationsService {
                 description: globalRole?.description ?? null,
                 isSystem: globalRole?.isSystem ?? false,
             },
+        });
+
+        // Same reasoning as getRoleByKey: a tenant role with no grants would
+        // leave the provisioned tenant's admin unable to do anything.
+        await this.copyRolePermissions(globalRole?.id, created.id, tx);
+
+        return created;
+    }
+
+    /**
+     * Copy a global role's permission grants onto a tenant-scoped copy.
+     *
+     * A tenant role is created with NO grants of its own, but PermissionGuard
+     * resolves permissions from the TENANT role — so without this a freshly
+     * provisioned tenant's admin holds nothing (no invites, no reports).
+     *
+     * Accepts either client so provisioning (inside its transaction) and later
+     * role creation behave identically.
+     */
+    private async copyRolePermissions(
+        sourceRoleId: string | undefined,
+        targetRoleId: string,
+        client: Prisma.TransactionClient,
+    ): Promise<void> {
+        if (!sourceRoleId) return;
+
+        const grants = await client.rolePermission.findMany({
+            where: { roleId: sourceRoleId },
+            select: { permissionId: true },
+        });
+
+        if (grants.length === 0) return;
+
+        await client.rolePermission.createMany({
+            data: grants.map((grant) => ({
+                roleId: targetRoleId,
+                permissionId: grant.permissionId,
+            })),
+            // Unique constraint is (roleId, permissionId); re-running the
+            // resolver must not fail on an existing grant.
+            skipDuplicates: true,
         });
     }
 
@@ -515,20 +576,39 @@ export class OrganizationsService {
         slug: string,
         memberId: string,
         roleKey: "admin" | "member",
+        /**
+         * Who performed the change. Distinct from the member being changed —
+         * the audit row must name the actor, not the target.
+         */
+        actorId?: string,
     ) {
-        const organization = await this.prisma.organization.findUnique({
-            where: { slug },
+        const tenantId = this.requireTenantId();
+
+        // Scoped to the request's tenant: a slug from another tenant must not be
+        // reachable here (same reasoning as findBySlugInTenant).
+        const organization = await this.prisma.organization.findFirst({
+            where: { slug, tenantId },
         });
 
         if (!organization) {
             throw new NotFoundException("Organization not found");
         }
 
+        // Read the current role up front: the event reports the transition, and
+        // after the update the previous value is gone.
+        const existing = await this.prisma.membership.findFirst({
+            where: { id: memberId, tenantId: organization.tenantId },
+            include: { role: true },
+        });
+
+        if (!existing) {
+            throw new NotFoundException("Member not found");
+        }
+
+        const previousRoleKey = existing.role.key;
+
         if (roleKey === MEMBER_ROLE_KEY) {
-            const member = await this.prisma.membership.findUnique({
-                where: { id: memberId },
-                include: { role: true },
-            });
+            const member = existing;
 
             if (member?.role.key === ADMIN_ROLE_KEY) {
                 const adminCount = await this.prisma.membership.count({
@@ -566,6 +646,19 @@ export class OrganizationsService {
 
         // Invalidate the tenant's RBAC permission cache (role changed).
         await this.cacheService.invalidateTenant(organization.tenantId);
+
+        // Only emit a real transition: re-assigning the same role is a no-op and
+        // would otherwise produce audit noise.
+        if (previousRoleKey !== updated.role.key) {
+            this.domainEvents.roleChanged({
+                tenantId: organization.tenantId,
+                actorId,
+                membershipId: updated.id,
+                targetUserId: updated.userId,
+                previousRoleKey,
+                newRoleKey: updated.role.key,
+            });
+        }
 
         return updated;
     }

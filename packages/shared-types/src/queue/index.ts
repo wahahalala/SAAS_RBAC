@@ -14,6 +14,14 @@ export const QUEUES = {
     EMAIL: "emailQueue",
     REPORT: "reportQueue",
     NOTIFICATION: "notificationQueue",
+    /**
+     * Cross-process domain-event bridge.
+     *
+     * The worker produces facts the API process owns the listeners for (e.g.
+     * REPORT_COMPLETED). Nest's EventEmitter is in-process only, so the worker
+     * publishes here and the API consumes and re-emits locally.
+     */
+    DOMAIN_EVENT: "domainEventQueue",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -27,6 +35,7 @@ export const JOBS = {
     INVITE_EMAIL: "invite-email",
     GENERATE_REPORT: "generate-report",
     SEND_NOTIFICATION: "send-notification",
+    PUBLISH_DOMAIN_EVENT: "publish-domain-event",
 } as const;
 
 export type JobName = (typeof JOBS)[keyof typeof JOBS];
@@ -94,8 +103,22 @@ export interface SendNotificationJob {
     channel: "in-app" | "email" | "push";
 }
 
+/**
+ * Payload for the cross-process domain-event bridge.
+ *
+ * `name` is a `DomainEventName`; `payload` is the same object the API will hand
+ * to its in-process EventEmitter, so a listener cannot tell whether the fact
+ * originated in this process or the worker.
+ */
+export interface PublishDomainEventJob {
+    type: "publish-domain-event";
+    name: string;
+    payload: Record<string, unknown>;
+}
+
 export type AnyJobData =
     | WelcomeEmailJob
     | InviteEmailJob
     | GenerateReportJob
-    | SendNotificationJob;
+    | SendNotificationJob
+    | PublishDomainEventJob;

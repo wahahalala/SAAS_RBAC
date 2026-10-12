@@ -13,3 +13,9 @@ export type { JobName, QueueName } from "@saas/shared-types";
 export const EMAIL_QUEUE = QUEUES.EMAIL;
 export const REPORT_QUEUE = QUEUES.REPORT;
 export const NOTIFICATION_QUEUE = QUEUES.NOTIFICATION;
+
+/**
+ * Domain-event bridge. This worker PRODUCES into it; the API consumes and
+ * re-emits locally (event listeners live only in the API).
+ */
+export const DOMAIN_EVENT_QUEUE = QUEUES.DOMAIN_EVENT;

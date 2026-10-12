@@ -12,6 +12,7 @@ import { createHash, randomUUID } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/modules/redis/redis.service";
 import { RedisKeys } from "@/modules/redis/keys";
+import { DomainEventsService } from "@/modules/events";
 import { RegisterDto, LoginDto, AuthResponse } from "./dto";
 
 interface JwtPayload {
@@ -40,6 +41,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly redis: RedisService,
+    private readonly domainEvents: DomainEventsService,
   ) {}
 
   /**
@@ -62,6 +64,17 @@ export class AuthService {
         passwordHash,
         name: dto.name,
       },
+    });
+
+    // Emitted AFTER the write commits. A brand-new account belongs to no tenant
+    // yet (registration does not provision one), hence tenantId: null.
+    this.domainEvents.userCreated({
+      tenantId: null,
+      actorId: user.id,
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      source: "register",
     });
 
     return this.generateAuthResponse(user, info);

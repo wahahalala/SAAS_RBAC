@@ -6,6 +6,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./modules/redis";
 import { QueueModule } from "./modules/queue";
+import { EventModule } from "./modules/events";
 import { TenantModule, TenantGuard, TenantInterceptor } from "./modules/tenant";
 import { PermissionGuard } from "./common/guards";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -62,6 +63,9 @@ import { HealthModule } from "./modules/health/health.module";
 
         // Queue producers (BullMQ)
         QueueModule,
+
+        // Domain events (bus + listeners + cross-process bridge)
+        EventModule,
 
         // Feature modules
         AuthModule,

@@ -10,5 +10,6 @@ export type {
     InviteEmailJob,
     GenerateReportJob,
     SendNotificationJob,
+    PublishDomainEventJob,
     AnyJobData,
 } from "@saas/shared-types";
