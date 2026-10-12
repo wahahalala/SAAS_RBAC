@@ -23,7 +23,8 @@ A production-ready, open-source SaaS starter template built with modern technolo
 - [x] **RBAC permissions**: `@RequirePermission("project.create")` + `PermissionGuard` (Membership → Role → RolePermission → Permission), frontend `usePermission()` to hide UI
 - [x] Member invitation system
 - [x] Team management UI
-- [x] **Tenant isolation**: `TenantGuard` + `TenantContext` + Prisma client extension (`tenantDb`) auto-inject `where.tenantId` on every tenant-scoped query (Tenant A can never read Tenant B data)
+- [x] **Tenant isolation**: `TenantGuard` validates `X-Tenant-Id` against the caller's Membership and `TenantInterceptor` opens a `TenantContext` (AsyncLocalStorage) for the request; every service query filters on that authorised `tenantId` (Tenant A can never read Tenant B data)
+- [x] **Slug lookups are tenant-bound**: organization routes address the org by slug, which is resolved *within* the request's tenant — a member of two tenants cannot use one tenant's `X-Tenant-Id` to operate on the other's organization. There is no Prisma auto-scoping extension; scoping is explicit and fail-closed (`TenantContext.requireTenantId()`).
 - [x] **Client tenant scope**: the web app sends `X-Tenant-Id` on every tenant-bound request; the active tenant is persisted in `localStorage`, switchable from the org switcher, and re-validated against the user's memberships on load
 
 ### Frontend
@@ -53,6 +54,20 @@ Every tenant-bound request carries `X-Tenant-Id`; `TenantGuard` resolves it and 
 | `GET /auth/me/permissions`, `GET /organizations/:slug`, … | tenant-scoped — `X-Tenant-Id` required, else `403` |
 
 The web client marks each call accordingly (`api-client.ts` → `tenantScoped`), resolves the active tenant in `useActiveTenant()` (keep the persisted one when still valid, otherwise fall back to the first organization), clears it on logout, and drops tenant-scoped React Query caches when the tenant changes.
+
+Organization routes take a **slug**, not a tenant id, so the slug is always resolved *within* the request's tenant (`OrganizationsService.findBySlugInTenant` / `getMembership`). Without that binding a user who belongs to two tenants could send tenant A's `X-Tenant-Id` and operate on tenant B's organization.
+
+### Tests
+
+| Suite | Covers |
+|-------|--------|
+| `apps/api/test/tenant-discovery.spec.ts` | user-level routes skip the tenant check; memberships expose `tenantId` |
+| `apps/api/test/organization-tenant-scope.spec.ts` | slug lookups are bound to the request tenant (cross-tenant slug is rejected, fail-closed without context) |
+| `apps/api/test/tenant-isolation.spec.ts` | `TenantContext` scoping and concurrency safety |
+| `apps/api/test/permission-guard.spec.ts` | RBAC allow/deny |
+| `apps/web/test/tenant-header.spec.ts` | `X-Tenant-Id` injection, retry pinning, persistence and fallback |
+
+`apps/api` tests hit a real PostgreSQL database (`docker compose up -d` first, then `pnpm --filter api test`).
 
 ### Developer Experience
 - [x] pnpm monorepo with Turborepo

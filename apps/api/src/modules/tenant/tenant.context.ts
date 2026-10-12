@@ -7,17 +7,21 @@ export interface TenantContextData {
 }
 
 /**
- * Shared AsyncLocalStorage instance so both the NestJS TenantContext service
- * and the low-level Prisma client extension can read the same request context
- * without circular dependency issues.
+ * Shared AsyncLocalStorage instance.
+ *
+ * Exported as a bare singleton (rather than only through the service) so
+ * helpers outside the DI graph — e.g. integration tests — can open the same
+ * request context the interceptor uses.
  */
 export const tenantStorage = new AsyncLocalStorage<TenantContextData>();
 
 /**
  * Request-scoped tenant context backed by AsyncLocalStorage.
  *
- * TenantGuard populates it for every authenticated request; services and the
- * Prisma client extension read the current tenantId from here.
+ * TenantGuard validates the tenant and TenantInterceptor opens the context for
+ * every authenticated request; services read the current tenantId from here to
+ * scope their own queries (there is no Prisma auto-scoping layer — see
+ * PrismaService for why).
  */
 @Injectable()
 export class TenantContext {

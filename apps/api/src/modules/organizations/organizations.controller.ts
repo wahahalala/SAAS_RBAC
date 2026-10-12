@@ -9,6 +9,7 @@ import {
     HttpCode,
     HttpStatus,
     ForbiddenException,
+    NotFoundException,
 } from "@nestjs/common";
 import {
     ApiTags,
@@ -24,7 +25,7 @@ import {
     UpdateMemberRoleDto,
 } from "./dto";
 import { CurrentUser } from "@/common/decorators";
-import { CurrentTenantId, SkipTenantCheck } from "@/modules/tenant";
+import { SkipTenantCheck } from "@/modules/tenant";
 
 interface AuthUser {
     id: string;
@@ -54,19 +55,18 @@ export class OrganizationsController {
     @ApiResponse({ status: 404, description: "Organization not found" })
     async findBySlug(
         @CurrentUser() user: AuthUser,
-        @CurrentTenantId() _tenantId: string,
         @Param("slug") slug: string
     ) {
-        // Verify user is a member
+        // getMembership resolves the slug WITHIN the tenant TenantGuard
+        // authorised for this request, so a slug from another tenant is a miss.
         const membership = await this.organizationsService.getMembership(
             user.id,
             slug
         );
         if (!membership) {
-            throw new ForbiddenException("Not a member of this organization");
+            throw new NotFoundException("Organization not found");
         }
 
-        // tenantId is auto-resolved by TenantGuard; never from user input.
         return this.organizationsService.findBySlug(slug);
     }
 

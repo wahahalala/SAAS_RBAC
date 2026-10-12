@@ -14,9 +14,9 @@ export const RedisKeys = {
     /** Tenant settings cache: tenant:{id}:settings */
     settings: (tenantId: string) => `tenant:${tenantId}:settings`,
 
-    /** Organization-by-slug cache prefix: tenant:{id}:organization:bySlug */
-    organizationBySlug: (tenantId: string) =>
-        `tenant:${tenantId}:organization:bySlug`,
+    /** Organization-by-slug cache: tenant:{id}:organization:bySlug:{slug} */
+    organizationBySlug: (tenantId: string, slug: string) =>
+        `tenant:${tenantId}:organization:bySlug:${slug}`,
 
     /** Login rate limit: ratelimit:login:{email|ip}:... */
     loginRateLimit: (key: string) => `ratelimit:login:${key}`,

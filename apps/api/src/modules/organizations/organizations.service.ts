@@ -16,6 +16,18 @@ import {
 } from "./dto";
 import type { Role } from "@saas/shared-types";
 
+/** Shape returned for an organization, as seen from one tenant. */
+export interface OrganizationView {
+    id: string;
+    tenantId: string;
+    name: string;
+    slug: string;
+    logo: string | null;
+    memberCount: number;
+    plan: string;
+    createdAt: Date;
+}
+
 const ADMIN_ROLE_KEY = "admin";
 const MEMBER_ROLE_KEY = "member";
 const ORGANIZATION_CACHE_TTL_SECONDS = 120;
@@ -158,27 +170,41 @@ export class OrganizationsService {
      * payload is a tenant view — memberships, plan — so it must be namespaced
      * by tenant like every other tenant-scoped cache).
      */
-    async findBySlug(slug: string) {
-        const tenantId = this.tenantContext.getTenantId();
-        if (!tenantId) {
-            // No tenant context: skip the cache instead of writing to a shared key.
-            return this.findBySlugUncached(slug);
-        }
+    async findBySlug(slug: string): Promise<OrganizationView> {
+        const tenantId = this.requireTenantId();
 
-        const key = `${RedisKeys.organizationBySlug(tenantId)}:${slug}`;
-        const cached = await this.cacheService.get<ReturnType<typeof this.formatOrganization>>(key);
+        const key = RedisKeys.organizationBySlug(tenantId, slug);
+        const cached = await this.cacheService.get<OrganizationView>(key);
         if (cached) {
             return cached;
         }
 
-        const organization = await this.findBySlugUncached(slug);
-        await this.cacheService.set(key, organization, ORGANIZATION_CACHE_TTL_SECONDS);
+        const organization = await this.findBySlugInTenant(slug);
+        if (!organization) {
+            throw new NotFoundException("Organization not found");
+        }
+
+        await this.cacheService.set(
+            key,
+            organization,
+            ORGANIZATION_CACHE_TTL_SECONDS,
+        );
         return organization;
     }
 
-    private async findBySlugUncached(slug: string) {
-        const organization = await this.prisma.organization.findUnique({
-            where: { slug },
+    /**
+     * Resolve a slug the way a REQUEST must resolve it: the slug has to belong
+     * to the tenant the request is authorised for.
+     *
+     * Slugs are globally unique, so looking an organization up by slug alone
+     * ignores `X-Tenant-Id` entirely. Returns null when the slug belongs to
+     * another tenant — callers turn that into a 404/403.
+     */
+    async findBySlugInTenant(slug: string): Promise<OrganizationView | null> {
+        const tenantId = this.requireTenantId();
+
+        const organization = await this.prisma.organization.findFirst({
+            where: { slug, tenantId },
             include: {
                 tenant: {
                     include: {
@@ -189,11 +215,23 @@ export class OrganizationsService {
             },
         });
 
-        if (!organization) {
-            throw new NotFoundException("Organization not found");
-        }
+        return organization ? this.formatOrganization(organization) : null;
+    }
 
-        return this.formatOrganization(organization);
+    /**
+     * The tenant this request is scoped to, or an error.
+     *
+     * Fails closed: without a tenant context there is nothing to scope a query
+     * by, and defaulting to "any tenant" would defeat isolation.
+     */
+    private requireTenantId(): string {
+        const tenantId = this.tenantContext.getTenantId();
+        if (!tenantId) {
+            throw new ForbiddenException(
+                "Tenant context is required for this operation",
+            );
+        }
+        return tenantId;
     }
 
     /**
@@ -274,19 +312,27 @@ export class OrganizationsService {
     }
 
     /**
-     * Check if user is a member of the organization.
+     * Check if user is a member of the organization addressed by `slug`
+     * WITHIN THE TENANT THIS REQUEST IS SCOPED TO.
+     *
+     * Both halves matter: the slug must belong to the request's tenant (so a
+     * caller cannot bring Tenant A's `X-Tenant-Id` and operate Tenant B's
+     * organization), and the user must hold a Membership in it.
      *
      * Returns a shape compatible with the old `OrganizationMember` result:
      * it exposes `role` as the role KEY (e.g. "admin" | "member") so
-     * controller-level checks keep working.
+     * controller-level checks keep working. Returns null when the slug is not
+     * in this tenant (callers must not distinguish that from "not a member").
      */
     async getMembership(userId: string, slug: string) {
-        const organization = await this.prisma.organization.findUnique({
-            where: { slug },
+        const tenantId = this.requireTenantId();
+
+        const organization = await this.prisma.organization.findFirst({
+            where: { slug, tenantId },
         });
 
         if (!organization) {
-            throw new NotFoundException("Organization not found");
+            return null;
         }
 
         const membership = await this.prisma.membership.findUnique({
@@ -308,7 +354,20 @@ export class OrganizationsService {
             userId: membership.userId,
             role: membership.role.key,
             createdAt: membership.createdAt,
+            organization: {
+                id: organization.id,
+                tenantId: organization.tenantId,
+                slug: organization.slug,
+            },
         };
+    }
+
+    /**
+     * Same contract as getMembership(), named for call sites that make the
+     * tenant binding explicit.
+     */
+    async getMembershipForRequest(userId: string, slug: string) {
+        return this.getMembership(userId, slug);
     }
 
     /**

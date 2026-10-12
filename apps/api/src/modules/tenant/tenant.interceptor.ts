@@ -10,8 +10,9 @@ import { tenantStorage, TenantContextData } from "./tenant.context";
 /**
  * Wraps the ENTIRE request handler (controller + services) inside the tenant
  * AsyncLocalStorage context. TenantGuard has already validated the tenant and
- * stored `request.tenantId`; this interceptor makes that value visible to the
- * Prisma client extension for the full duration of the request.
+ * stored `request.tenantId`; this interceptor makes that authorised value
+ * readable (via TenantContext) for the full duration of the request so
+ * services can scope their queries to it.
  */
 @Injectable()
 export class TenantInterceptor implements NestInterceptor {

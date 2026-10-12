@@ -1,126 +1,29 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
-import { Prisma, PrismaClient } from "@prisma/client";
-import { tenantStorage } from "@/modules/tenant/tenant.context";
+import { PrismaClient } from "@prisma/client";
 
 /**
- * Models whose rows belong to a tenant and therefore must always be scoped by
- * tenantId. `notification` is intentionally omitted: its tenantId is nullable
- * for global notifications.
+ * Prisma database service.
+ *
+ * TENANT ISOLATION NOTE
+ * ---------------------
+ * Tenant scoping is enforced by TenantGuard (which validates the `X-Tenant-Id`
+ * header against the caller's Membership and stores the resolved id on the
+ * request) plus explicit `tenantId` filters in each service query. There is no
+ * Prisma-level auto-scoping extension: an earlier `$extends`-based
+ * `tenantDb` client was never wired into any service and has been removed
+ * rather than left in place implying a guarantee it did not provide.
+ *
+ * Consequences to keep in mind when adding a query on a tenant-scoped model
+ * (Tenant, Organization, Membership, Role, Invitation, Subscription,
+ * AuditLog, UsageRecord): you MUST filter by tenantId yourself. Use
+ * `TenantContext.getTenantId()` (or `@CurrentTenantId()`) — never a value
+ * taken from the request body or query string.
  */
-const TENANT_SCOPED_MODELS = new Set<Prisma.ModelName>([
-    "Tenant",
-    "Organization",
-    "Membership",
-    "Role",
-    "Invitation",
-    "Subscription",
-    "AuditLog",
-    "UsageRecord",
-]);
-
-const READ_OPERATIONS = new Set([
-    "findMany",
-    "findFirst",
-    "findUnique",
-    "count",
-    "aggregate",
-    "groupBy",
-]);
-
-function currentTenantId(): string | undefined {
-    return tenantStorage.getStore()?.tenantId;
-}
-
-function forceTenantScope(args: any, tenantId: string, operation: string): void {
-    if (!args || typeof args !== "object") return;
-
-    // CREATE: when a tenant context exists, force the row into the current
-    // tenant (caller can never create cross-tenant rows). Without a context,
-    // explicit creation (e.g. provisioning a new Tenant) is allowed.
-    if ("data" in args && args.data && typeof args.data === "object") {
-        if (Array.isArray(args.data)) {
-            for (const item of args.data) {
-                if (item && typeof item === "object") {
-                    item.tenantId = tenantId;
-                }
-            }
-        } else {
-            args.data.tenantId = tenantId;
-        }
-    }
-
-    // Upsert create branch.
-    if (args.create && typeof args.create === "object") {
-        args.create.tenantId = tenantId;
-    }
-
-    // For READ operations there may be no `where` at all (e.g. findMany()).
-    // Always ensure a tenantId filter exists, overwriting any user value.
-    if (READ_OPERATIONS.has(operation)) {
-        if (args.where && typeof args.where === "object") {
-            args.where.tenantId = tenantId;
-        } else {
-            args.where = { tenantId };
-        }
-        return;
-    }
-
-    // Mutations with an existing where: OVERWRITE tenantId.
-    if ("where" in args && args.where && typeof args.where === "object") {
-        args.where.tenantId = tenantId;
-    }
-}
-
-function buildTenantScopedClient(raw: PrismaClient) {
-    return raw.$extends({
-        query: {
-            $allModels: {
-                async $allOperations({ model, operation, args, query }: any) {
-                    if (!TENANT_SCOPED_MODELS.has(model as Prisma.ModelName)) {
-                        return query(args);
-                    }
-
-                    const tenantId = currentTenantId();
-
-                    // Reads and mutations on tenant data REQUIRE a tenant
-                    // context (fail closed). Creation may be cross-tenant when
-                    // provisioning (no context) — but never from within a
-                    // different tenant's context (forced scope above).
-                    if (
-                        tenantId === undefined &&
-                        (READ_OPERATIONS.has(operation as string) ||
-                            operation === "update" ||
-                            operation === "updateMany" ||
-                            operation === "delete" ||
-                            operation === "deleteMany" ||
-                            operation === "upsert")
-                    ) {
-                        throw new Error(
-                            `Tenant context is required for '${String(model)}.${String(operation)}'`,
-                        );
-                    }
-
-                    if (tenantId !== undefined) {
-                        forceTenantScope(args, tenantId, operation as string);
-                    }
-
-                    return query(args);
-                },
-            },
-        },
-    });
-}
-
-export type TenantPrismaClient = ReturnType<typeof buildTenantScopedClient>;
-
 @Injectable()
 export class PrismaService
     extends PrismaClient
     implements OnModuleInit, OnModuleDestroy
 {
-    /** Tenant-isolated client: auto-injects `where.tenantId`. */
-    readonly tenantDb: TenantPrismaClient;
-
     constructor() {
         super({
             log:
@@ -128,8 +31,6 @@ export class PrismaService
                     ? ["query", "info", "warn", "error"]
                     : ["error"],
         });
-
-        this.tenantDb = buildTenantScopedClient(this);
     }
 
     async onModuleInit() {
