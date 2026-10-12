@@ -8,3 +8,6 @@ export * from "./types";
 export * from "./api";
 export * from "./dto";
 export * from "./inputs";
+
+// BullMQ queue names, job names and payload contracts (API producer + worker)
+export * from "./queue";

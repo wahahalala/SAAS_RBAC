@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Github } from "lucide-react";
@@ -13,8 +14,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useLogin } from "@/hooks";
 
 export default function LoginPage() {
+    // useSearchParams needs a Suspense boundary during prerendering.
+    return (
+        <Suspense fallback={null}>
+            <LoginForm />
+        </Suspense>
+    );
+}
+
+function LoginForm() {
     const login = useLogin();
+    const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
+
+    // Deep link target (e.g. an invitation accept page). Validated again in
+    // useLogin before redirecting.
+    const redirect = searchParams.get("redirect");
 
     const {
         register,
@@ -27,7 +42,7 @@ export default function LoginPage() {
     const onSubmit = async (data: LoginInput) => {
         setError(null);
         try {
-            await login.mutateAsync(data);
+            await login.mutateAsync({ ...data, redirect: redirect ?? undefined });
         } catch (err: any) {
             setError(err.message || "Login failed. Please try again.");
         }

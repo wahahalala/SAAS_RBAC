@@ -83,6 +83,7 @@ model User {
   accounts      Account[]
   memberships   Membership[]
   invitations   Invitation[]      @relation("InvitedBy")
+  acceptedInvitations Invitation[] @relation("AcceptedBy")
   refreshSessions RefreshSession[]
   auditLogs     AuditLog[]
   notifications Notification[]
@@ -219,8 +220,14 @@ model Invitation {
   status         InvitationStatus @default(pending)
   createdAt      DateTime @default(now())
 
+  // Who accepted, and when. Needed to keep accept idempotent for the user who
+  // already joined, while still refusing the token to anybody else.
+  acceptedById   String?
+  acceptedAt     DateTime?
+
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invitedBy User   @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedBy User? @relation("AcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([email])

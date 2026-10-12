@@ -28,7 +28,7 @@ export class ReportService {
             { type: "generate-report", ...data },
             {
                 ...DEFAULT_JOB_OPTIONS,
-                jobId: `report:${data.tenantId}:${data.reportType}`,
+                jobId: `report-${data.tenantId}-${data.reportType}`,
             },
         );
         this.logger.log(

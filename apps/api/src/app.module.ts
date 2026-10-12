@@ -1,14 +1,18 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { BullModule } from "@nestjs/bullmq";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./modules/redis";
+import { QueueModule } from "./modules/queue";
 import { TenantModule, TenantGuard, TenantInterceptor } from "./modules/tenant";
 import { PermissionGuard } from "./common/guards";
 import { AuthModule } from "./modules/auth/auth.module";
+import { JwtAuthGuard } from "./modules/auth/guards";
 import { UsersModule } from "./modules/users/users.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
+import { InvitationsModule } from "./modules/invitations/invitations.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { HealthModule } from "./modules/health/health.module";
 
@@ -18,6 +22,17 @@ import { HealthModule } from "./modules/health/health.module";
         ConfigModule.forRoot({
             isGlobal: true,
             envFilePath: ".env",
+        }),
+
+        // BullMQ connection for producers (the worker app owns the processors).
+        BullModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => ({
+                connection: {
+                    host: configService.get("REDIS_HOST", "localhost"),
+                    port: configService.get<number>("REDIS_PORT", 6379),
+                },
+            }),
         }),
 
         // Rate limiting
@@ -44,16 +59,27 @@ import { HealthModule } from "./modules/health/health.module";
         RedisModule,
         HealthModule,
 
+        // Queue producers (BullMQ)
+        QueueModule,
+
         // Feature modules
         AuthModule,
         UsersModule,
         OrganizationsModule,
+        InvitationsModule,
         ProjectsModule,
         TenantModule,
     ],
     providers: [
-        // Tenant isolation guard. Registered AFTER AuthModule's JwtAuthGuard so
-        // authentication runs first and `request.user` is available here.
+        // Authentication FIRST. Global guards run in the order their APP_GUARD
+        // providers are registered on the root module, and every later guard
+        // depends on `request.user` being populated by passport.
+        {
+            provide: APP_GUARD,
+            useClass: JwtAuthGuard,
+        },
+        // Tenant isolation guard. Runs after authentication so `request.user`
+        // is available when resolving the X-Tenant-Id membership.
         {
             provide: APP_GUARD,
             useClass: TenantGuard,

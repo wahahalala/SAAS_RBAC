@@ -1,13 +1,16 @@
 import {
     Injectable,
+    Logger,
     NotFoundException,
     ConflictException,
     ForbiddenException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { CacheService } from "@/modules/redis/cache.service";
 import { RedisKeys } from "@/modules/redis/keys";
+import { EmailQueueService } from "@/modules/queue";
 import { TenantContext } from "@/modules/tenant";
 import {
     CreateOrganizationDto,
@@ -32,12 +35,19 @@ const ADMIN_ROLE_KEY = "admin";
 const MEMBER_ROLE_KEY = "member";
 const ORGANIZATION_CACHE_TTL_SECONDS = 120;
 
+/** How long an invitation stays acceptable. */
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 @Injectable()
 export class OrganizationsService {
+    private readonly logger = new Logger(OrganizationsService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly cacheService: CacheService,
         private readonly tenantContext: TenantContext,
+        private readonly configService: ConfigService,
+        private readonly emailQueue: EmailQueueService,
     ) { }
 
     /**
@@ -85,6 +95,8 @@ export class OrganizationsService {
             throw new ConflictException("Organization slug already exists");
         }
 
+        let tenantId = "";
+
         await this.prisma.$transaction(async (tx) => {
             // 1. Backing tenant.
             const tenant = await tx.tenant.create({
@@ -95,6 +107,7 @@ export class OrganizationsService {
                     status: "active",
                 },
             });
+            tenantId = tenant.id;
 
             // 2. Compatibility organization (1:1 with tenant).
             await tx.organization.create({
@@ -128,7 +141,24 @@ export class OrganizationsService {
             });
         });
 
-        return this.formatOrganization(await this.findBySlug(slug));
+        // Read the row back for the response. This must NOT go through
+        // findBySlug(): that resolves the slug within the CALLER's tenant
+        // context, and provisioning runs with no tenant yet (the whole point
+        // of this operation), so it would fail with "Tenant context is
+        // required". The slug was just created here, so read it directly.
+        const created = await this.prisma.organization.findFirstOrThrow({
+            where: { tenantId, slug },
+            include: {
+                tenant: {
+                    include: {
+                        memberships: true,
+                        subscriptions: true,
+                    },
+                },
+            },
+        });
+
+        return this.formatOrganization(created);
     }
 
     /**
@@ -374,16 +404,25 @@ export class OrganizationsService {
      * Invite a new member.
      */
     async inviteMember(slug: string, inviterId: string, dto: InviteMemberDto) {
-        const organization = await this.prisma.organization.findUnique({
-            where: { slug },
+        const tenantId = this.requireTenantId();
+
+        // Address the organization THROUGH the request's tenant, so a slug
+        // from another tenant can never be invited into.
+        const organization = await this.prisma.organization.findFirst({
+            where: { slug, tenantId },
         });
 
         if (!organization) {
             throw new NotFoundException("Organization not found");
         }
 
+        // Emails are compared case-insensitively everywhere else (auth lower-
+        // cases on register/login), so normalise here too — otherwise
+        // "John@x.com" would slip past the duplicate checks below.
+        const email = dto.email.trim().toLowerCase();
+
         const existingUser = await this.prisma.user.findUnique({
-            where: { email: dto.email },
+            where: { email },
         });
 
         if (existingUser) {
@@ -401,10 +440,12 @@ export class OrganizationsService {
             }
         }
 
+        // Only a still-pending, unexpired invitation blocks a new one.
         const existingInvite = await this.prisma.invitation.findFirst({
             where: {
-                email: dto.email,
+                email,
                 tenantId: organization.tenantId,
+                status: "pending",
                 expiresAt: { gt: new Date() },
             },
         });
@@ -416,13 +457,12 @@ export class OrganizationsService {
         const roleKey = dto.role as Role;
         const role = await this.getRoleByKey(organization.tenantId, roleKey);
 
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+        const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
 
         const invitation = await this.prisma.invitation.create({
             data: {
                 tenantId: organization.tenantId,
-                email: dto.email,
+                email,
                 roleId: role.id,
                 roleKey: role.key,
                 invitedById: inviterId,
@@ -431,9 +471,41 @@ export class OrganizationsService {
             },
         });
 
-        // TODO: Send invitation email
+        // Hand the email off to the worker via BullMQ. Enqueueing must not
+        // undo the invitation: if Redis is unavailable the invitation still
+        // exists and the admin can retry, so the failure is logged, not thrown.
+        const inviter = await this.prisma.user.findUnique({
+            where: { id: inviterId },
+            select: { name: true, email: true },
+        });
+
+        try {
+            await this.emailQueue.enqueueInviteEmail({
+                to: invitation.email,
+                inviterName: inviter?.name ?? inviter?.email ?? "A teammate",
+                organizationName: organization.name,
+                inviteToken: invitation.token,
+                inviteUrl: this.buildInviteUrl(invitation.token),
+            });
+        } catch (error) {
+            this.logger.error(
+                `Invitation ${invitation.id} created but its email could not be queued: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+        }
 
         return invitation;
+    }
+
+    /** Absolute accept link the invited user opens in the browser. */
+    private buildInviteUrl(token: string): string {
+        const base = (
+            this.configService.get<string>("FRONTEND_URL") ||
+            "http://localhost:3000"
+        ).replace(/\/+$/, "");
+
+        return `${base}/invitations/${token}`;
     }
 
     /**

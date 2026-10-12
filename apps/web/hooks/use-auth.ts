@@ -70,19 +70,41 @@ export function useSessionBootstrap() {
     });
 }
 
+/**
+ * Where to send the user after authenticating.
+ *
+ * Callers deep-link with `?redirect=` (e.g. an invitation accept page). Only
+ * same-origin, absolute paths are honoured — an attacker-supplied
+ * `redirect=https://evil.example` must not turn login into an open redirect.
+ */
+export function safeRedirectTarget(
+    redirect: string | null | undefined,
+    fallback = "/dashboard",
+): string {
+    if (!redirect) return fallback;
+
+    // Must be a single-slash absolute path: rejects "//evil.com" and
+    // "https://evil.com" alike.
+    if (!redirect.startsWith("/") || redirect.startsWith("//")) {
+        return fallback;
+    }
+
+    return redirect;
+}
+
 export function useLogin() {
     const { setUser } = useAuthStore();
     const router = useRouter();
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (data: { email: string; password: string }) =>
-            apiClient.login(data),
-        onSuccess: (data: AuthResponse) => {
+        mutationFn: (data: { email: string; password: string; redirect?: string }) =>
+            apiClient.login({ email: data.email, password: data.password }),
+        onSuccess: (data: AuthResponse, variables) => {
             setAccessToken(data.accessToken);
             setUser(data.user);
             queryClient.invalidateQueries({ queryKey: ["user"] });
-            router.push("/dashboard");
+            router.push(safeRedirectTarget(variables.redirect));
         },
     });
 }
@@ -93,13 +115,17 @@ export function useRegister() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (data: { email: string; password: string; name: string }) =>
-            apiClient.register(data),
-        onSuccess: (data: AuthResponse) => {
+        mutationFn: (data: {
+            email: string;
+            password: string;
+            name: string;
+            redirect?: string;
+        }) => apiClient.register(data),
+        onSuccess: (data: AuthResponse, variables) => {
             setAccessToken(data.accessToken);
             setUser(data.user);
             queryClient.invalidateQueries({ queryKey: ["user"] });
-            router.push("/dashboard");
+            router.push(safeRedirectTarget(variables.redirect));
         },
     });
 }

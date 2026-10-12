@@ -2,7 +2,16 @@
     "extends": "@saas/typescript-config/base.json",
     "compilerOptions": {
         "outDir": "./dist",
-        "rootDir": "./src"
+        "rootDir": "./src",
+        // base.json sets noEmit + incremental (fine for type-check), but this
+        // package must EMIT: the compiled API and worker run on plain Node and
+        // cannot load TypeScript sources at runtime.
+        "noEmit": false,
+        "declaration": true,
+        "declarationMap": false,
+        "module": "CommonJS",
+        "moduleResolution": "node",
+        "incremental": false
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "dist"]

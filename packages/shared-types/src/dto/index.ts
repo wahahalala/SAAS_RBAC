@@ -1,4 +1,4 @@
-import { Role, Plan } from "../constants";
+import { Role, Plan, InvitationStatus } from "../constants";
 
 /**
  * Auth response returned by register / login / refresh.
@@ -109,4 +109,56 @@ export interface InvitationResponse {
     expiresAt: Date | string;
     invitedById: string;
     createdAt: Date | string;
+}
+
+/**
+ * An invitation as listed for administrators.
+ *
+ * Omits the token: listing invitations must not hand out accept links for
+ * other people's invitations.
+ */
+export interface InvitationSummaryResponse {
+    id: string;
+    email: string;
+    /** Effective status, with expiry already applied. */
+    status: InvitationStatus;
+    role: Role | string;
+    expiresAt: Date | string;
+    createdAt: Date | string;
+    invitedBy: {
+        id: string;
+        name: string | null;
+        email: string;
+    } | null;
+}
+
+/**
+ * Public preview of an invitation, resolved from its token.
+ *
+ * Deliberately contains no user ids beyond the inviter's display name and no
+ * raw email: anyone holding the link can read it before authenticating.
+ */
+export interface InvitationPreviewResponse {
+    email: string;
+    organizationName: string;
+    organizationSlug: string;
+    role: Role | string;
+    invitedByName: string | null;
+    status: InvitationStatus;
+    expiresAt: Date | string;
+    /** Whether an account already exists for the invited email. */
+    accountExists: boolean;
+}
+
+/**
+ * Result of accepting an invitation.
+ */
+export interface AcceptInvitationResponse {
+    tenantId: string;
+    organizationId: string;
+    organizationSlug: string;
+    organizationName: string;
+    role: Role | string;
+    /** True when the caller was already a member (idempotent accept). */
+    alreadyMember: boolean;
 }

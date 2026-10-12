@@ -2,12 +2,25 @@
     "name": "@saas/shared-types",
     "version": "0.0.1",
     "private": true,
-    "main": "./src/index.ts",
-    "types": "./src/index.ts",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "exports": {
-        ".": "./src/index.ts",
-        "./constants": "./src/constants/index.ts",
-        "./types": "./src/types/index.ts"
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./constants": {
+            "types": "./dist/constants/index.d.ts",
+            "default": "./dist/constants/index.js"
+        },
+        "./types": {
+            "types": "./dist/types/index.d.ts",
+            "default": "./dist/types/index.js"
+        },
+        "./queue": {
+            "types": "./dist/queue/index.d.ts",
+            "default": "./dist/queue/index.js"
+        }
     },
     "scripts": {
         "build": "tsc",

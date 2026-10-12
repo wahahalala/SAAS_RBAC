@@ -1,32 +1,15 @@
-/**
- * Queue and job name constants shared across producers, processors and status
- * queries.
- */
-export const EMAIL_QUEUE = "emailQueue";
-export const REPORT_QUEUE = "reportQueue";
-export const NOTIFICATION_QUEUE = "notificationQueue";
-
-export const JOBS = {
-    WELCOME_EMAIL: "welcome-email",
-    INVITE_EMAIL: "invite-email",
-    GENERATE_REPORT: "generate-report",
-    SEND_NOTIFICATION: "send-notification",
-} as const;
-
-export type JobName = (typeof JOBS)[keyof typeof JOBS];
+import { QUEUES } from "@saas/shared-types";
 
 /**
- * Retry/backoff policy shared by all queues.
+ * Queue names, job names and the shared retry policy now live in
+ * `@saas/shared-types` so the API producer and this worker cannot drift.
  *
- * - attempts: 5 total (1 initial + 4 retries)
- * - backoff: `exponential` 1s -> 2s -> 4s -> 8s, capped at 30s
+ * The `*_QUEUE` aliases are kept for the existing processors/producers and
+ * are derived from the shared definition (never re-declared here).
  */
-export const DEFAULT_JOB_OPTIONS = {
-    attempts: 5,
-    backoff: {
-        type: "exponential" as const,
-        delay: 1000,
-    },
-    removeOnComplete: false,
-    removeOnFail: false,
-};
+export { JOBS, DEFAULT_JOB_OPTIONS } from "@saas/shared-types";
+export type { JobName, QueueName } from "@saas/shared-types";
+
+export const EMAIL_QUEUE = QUEUES.EMAIL;
+export const REPORT_QUEUE = QUEUES.REPORT;
+export const NOTIFICATION_QUEUE = QUEUES.NOTIFICATION;

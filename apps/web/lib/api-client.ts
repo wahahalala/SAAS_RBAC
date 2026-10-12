@@ -13,6 +13,9 @@ import type {
     UpdateUserInput,
     CreateOrganizationInput,
     InviteMemberInput,
+    InvitationPreviewResponse,
+    InvitationSummaryResponse,
+    AcceptInvitationResponse,
 } from "@saas/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
@@ -277,6 +280,36 @@ class ApiClient {
             method: "POST",
             body: JSON.stringify(data),
         });
+    }
+
+    async listInvitations(slug: string) {
+        return this.request<InvitationSummaryResponse[]>(
+            `/organizations/${slug}/invitations`
+        );
+    }
+
+    async revokeInvitation(slug: string, invitationId: string) {
+        return this.request(`/organizations/${slug}/invitations/${invitationId}`, {
+            method: "DELETE",
+        });
+    }
+
+    // Invitation accept flow.
+    //
+    // Both calls are `tenantScoped: false`: the token itself is the tenant
+    // selector, and the accept page must work before the user has an active
+    // tenant (a brand-new user has none yet).
+    async getInvitation(token: string) {
+        return this.request<InvitationPreviewResponse>(`/invitations/${token}`, {
+            tenantScoped: false,
+        });
+    }
+
+    async acceptInvitation(token: string) {
+        return this.request<AcceptInvitationResponse>(
+            `/invitations/${token}/accept`,
+            { method: "POST", tenantScoped: false }
+        );
     }
 }
 

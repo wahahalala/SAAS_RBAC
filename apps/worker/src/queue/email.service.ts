@@ -26,7 +26,7 @@ export class EmailService {
             { type: "welcome-email", ...data },
             {
                 ...DEFAULT_JOB_OPTIONS,
-                jobId: `welcome:${data.to}`,
+                jobId: `welcome-${data.to}`,
             },
         );
         this.logger.log(`Enqueued welcome-email job ${job.id}`);
@@ -39,7 +39,7 @@ export class EmailService {
             { type: "invite-email", ...data },
             {
                 ...DEFAULT_JOB_OPTIONS,
-                jobId: `invite:${data.to}:${data.inviteToken}`,
+                jobId: `invite-${data.inviteToken}`,
             },
         );
         this.logger.log(`Enqueued invite-email job ${job.id}`);

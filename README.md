@@ -21,9 +21,9 @@ A production-ready, open-source SaaS starter template built with modern technolo
 - [x] Organizations with slug-based routing
 - [x] Role-based access control (Admin/Member)
 - [x] **RBAC permissions**: `@RequirePermission("project.create")` + `PermissionGuard` (Membership → Role → RolePermission → Permission), frontend `usePermission()` to hide UI
-- [x] Member invitation system
+- [x] Member invitation system (issue → queued email → tokenised accept → Membership)
 - [x] Team management UI
-- [x] **Tenant isolation**: `TenantGuard` validates `X-Tenant-Id` against the caller's Membership and `TenantInterceptor` opens a `TenantContext` (AsyncLocalStorage) for the request; every service query filters on that authorised `tenantId` (Tenant A can never read Tenant B data)
+- [x] **Tenant isolation**: global guards run `JwtAuthGuard` → `TenantGuard` → `PermissionGuard` (in that order, registered on `AppModule`); `TenantGuard` validates `X-Tenant-Id` against the caller's Membership and `TenantInterceptor` opens a `TenantContext` (AsyncLocalStorage) for the request. Every service query filters on that authorised `tenantId` — there is no Prisma auto-scoping layer (Tenant A can never read Tenant B data)
 - [x] **Slug lookups are tenant-bound**: organization routes address the org by slug, which is resolved *within* the request's tenant — a member of two tenants cannot use one tenant's `X-Tenant-Id` to operate on the other's organization. There is no Prisma auto-scoping extension; scoping is explicit and fail-closed (`TenantContext.requireTenantId()`).
 - [x] **Client tenant scope**: the web app sends `X-Tenant-Id` on every tenant-bound request; the active tenant is persisted in `localStorage`, switchable from the org switcher, and re-validated against the user's memberships on load
 
@@ -57,6 +57,39 @@ The web client marks each call accordingly (`api-client.ts` → `tenantScoped`),
 
 Organization routes take a **slug**, not a tenant id, so the slug is always resolved *within* the request's tenant (`OrganizationsService.findBySlugInTenant` / `getMembership`). Without that binding a user who belongs to two tenants could send tenant A's `X-Tenant-Id` and operate on tenant B's organization.
 
+### Invitation flow
+
+```
+Admin invites (POST /organizations/:slug/invitations)
+        |
+        v
+Invitation row  (status: pending, token, expiresAt = now + 7d)
+        |
+        v
+BullMQ emailQueue  -- job "invite-email" -->  worker EmailProcessor
+        |
+        v
+Invitee opens /invitations/{token}   (public preview: org, role, inviter)
+        |
+        v
+POST /invitations/{token}/accept  -->  Membership created, status = accepted
+```
+
+Status lifecycle — `pending` → `accepted` | `expired` | `canceled`:
+
+| Transition | Trigger |
+|------------|---------|
+| `pending` → `accepted` | the invitee accepts |
+| `pending` → `expired` | `expiresAt` has passed; applied lazily on read/write (no scheduler), and persisted by the admin list |
+| `pending` → `canceled` | an admin revokes it (`DELETE /organizations/:slug/invitations/:id`) |
+
+Behaviour worth knowing:
+
+- **The token is the credential.** Accepting does not require the signed-in email to match the invited address. A token is single-use: only the account that accepted it may re-accept (idempotent for a double-click / refresh); anyone else is refused.
+- **Both accept routes are `@SkipTenantCheck()`** — the token is the tenant selector, and a brand-new invitee has no active tenant yet.
+- **Email enqueue failures are logged, not thrown**: the invitation still exists and the admin can retry.
+- BullMQ rejects custom job ids containing `:`, so ids are built with `-` (a colon silently broke every invite enqueue).
+
 ### Tests
 
 | Suite | Covers |
@@ -65,7 +98,10 @@ Organization routes take a **slug**, not a tenant id, so the slug is always reso
 | `apps/api/test/organization-tenant-scope.spec.ts` | slug lookups are bound to the request tenant (cross-tenant slug is rejected, fail-closed without context) |
 | `apps/api/test/tenant-isolation.spec.ts` | `TenantContext` scoping and concurrency safety |
 | `apps/api/test/permission-guard.spec.ts` | RBAC allow/deny |
+| `apps/api/test/invitations.spec.ts` | full invitation lifecycle: preview, accept, single-use token, expiry, revoke |
+| `apps/api/test/queue-invite-email.spec.ts` | API → BullMQ → worker contract (queue/job names, payload, retry policy, job-id constraint) |
 | `apps/web/test/tenant-header.spec.ts` | `X-Tenant-Id` injection, retry pinning, persistence and fallback |
+| `apps/web/test/invitation-flow.spec.ts` | invitation calls stay unscoped, admin calls stay scoped, open-redirect guard |
 
 `apps/api` tests hit a real PostgreSQL database (`docker compose up -d` first, then `pnpm --filter api test`).
 
@@ -81,7 +117,7 @@ Organization routes take a **slug**, not a tenant id, so the slug is always reso
 |-------|------------|
 | **Frontend** | Next.js 15, React 19, Tailwind CSS 4, shadcn/ui |
 | **Backend** | NestJS 10, Prisma, PostgreSQL, Redis |
-| **Worker** | NestJS 10, BullMQ (Redis queues) |
+| **Worker** | NestJS 10, BullMQ (Redis queues); queue/job contracts from `@saas/shared-types` |
 | **Shared** | `@saas/shared-types` (types/DTO), `@saas/validation` (Zod) |
 | **Auth** | JWT, Passport.js, bcrypt |
 | **Tooling** | pnpm, Turborepo, TypeScript 5.7 |
@@ -224,12 +260,13 @@ docker compose down -v
 - [ ] OAuth callback page (fix OAuth flow)
 - [ ] Complete member management (remove, change role)
 - [ ] Password reset flow
-- [ ] Accept invitation flow
+- [x] Accept invitation flow
+- [x] Invitation emails (enqueued to BullMQ, delivered by the worker)
 
 ### Version 1.2 (Planned)
-- [ ] Email service integration (@nestjs-modules/mailer)
+- [ ] Real email transport (SMTP/Resend; the worker currently logs the send)
 - [ ] Email verification
-- [ ] Invitation emails
+- [ ] Invitation resend / expiry sweeper job
 - [ ] Notification system
 
 ### Version 2.0 (Future)

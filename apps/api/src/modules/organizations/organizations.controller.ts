@@ -26,6 +26,7 @@ import {
 } from "./dto";
 import { CurrentUser } from "@/common/decorators";
 import { SkipTenantCheck } from "@/modules/tenant";
+import { InvitationsService } from "@/modules/invitations";
 
 interface AuthUser {
     id: string;
@@ -36,7 +37,10 @@ interface AuthUser {
 @ApiBearerAuth()
 @Controller("organizations")
 export class OrganizationsController {
-    constructor(private readonly organizationsService: OrganizationsService) { }
+    constructor(
+        private readonly organizationsService: OrganizationsService,
+        private readonly invitationsService: InvitationsService,
+    ) { }
 
     @Post()
     @SkipTenantCheck()
@@ -190,5 +194,67 @@ export class OrganizationsController {
         }
 
         await this.organizationsService.removeMember(slug, memberId);
+    }
+
+    // Invitation management (admin view)
+    @Get(":slug/invitations")
+    @ApiOperation({ summary: "List invitations for the organization" })
+    @ApiResponse({ status: 200, description: "Invitations, newest first" })
+    async listInvitations(
+        @CurrentUser() user: AuthUser,
+        @Param("slug") slug: string,
+    ) {
+        const membership = await this.requireAdmin(user.id, slug);
+        return this.invitationsService.listForTenant(membership.tenantId);
+    }
+
+    @Delete(":slug/invitations/:token")
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: "Revoke a pending invitation" })
+    @ApiResponse({ status: 200, description: "Invitation revoked" })
+    async revokeInvitation(
+        @CurrentUser() user: AuthUser,
+        @Param("slug") slug: string,
+        @Param("token") token: string,
+    ) {
+        const membership = await this.requireAdmin(user.id, slug);
+
+        // The token must belong to THIS tenant: otherwise an admin of tenant A
+        // could revoke tenant B's invitation by guessing/reusing a token link.
+        const invitations = await this.invitationsService.listForTenant(
+            membership.tenantId,
+        );
+        const owned = invitations.some((invitation) =>
+            invitation.id === token,
+        );
+
+        if (!owned) {
+            throw new NotFoundException("Invitation not found");
+        }
+
+        return this.invitationsService.cancelById(token, membership.tenantId);
+    }
+
+    /**
+     * Resolve the caller's membership and require the admin role.
+     *
+     * getMembership() scopes the slug to the request's tenant, so this both
+     * authorises and yields the tenantId used for invitation queries.
+     */
+    private async requireAdmin(
+        userId: string,
+        slug: string,
+    ): Promise<{ tenantId: string; role: string }> {
+        const membership = await this.organizationsService.getMembershipForRequest(
+            userId,
+            slug,
+        );
+
+        if (!membership || membership.role !== "admin") {
+            throw new ForbiddenException("Admin access required");
+        }
+
+        const organisation = await this.organizationsService.findBySlug(slug);
+        return { tenantId: organisation.tenantId, role: membership.role };
     }
 }

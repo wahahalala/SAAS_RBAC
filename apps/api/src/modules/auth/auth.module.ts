@@ -5,8 +5,6 @@ import { ConfigService } from "@nestjs/config";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy, GoogleStrategy, GitHubStrategy } from "./strategies";
-import { JwtAuthGuard } from "./guards";
-import { APP_GUARD } from "@nestjs/core";
 
 @Module({
     imports: [
@@ -27,11 +25,10 @@ import { APP_GUARD } from "@nestjs/core";
         JwtStrategy,
         GoogleStrategy,
         GitHubStrategy,
-        // Apply JWT guard globally
-        {
-            provide: APP_GUARD,
-            useClass: JwtAuthGuard,
-        },
+        // NOTE: the global JwtAuthGuard is registered in AppModule, not here.
+        // Nest runs APP_GUARD providers of the ROOT module before those of an
+        // imported module, so registering it here made TenantGuard (root)
+        // execute first and reject with 401 before passport had run.
     ],
     exports: [AuthService],
 })

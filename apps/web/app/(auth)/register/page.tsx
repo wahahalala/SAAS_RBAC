@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Github } from "lucide-react";
@@ -13,8 +14,21 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useRegister } from "@/hooks";
 
 export default function RegisterPage() {
+    // useSearchParams needs a Suspense boundary during prerendering.
+    return (
+        <Suspense fallback={null}>
+            <RegisterForm />
+        </Suspense>
+    );
+}
+
+function RegisterForm() {
     const register_ = useRegister();
+    const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
+
+    // Deep link target (e.g. an invitation accept page).
+    const redirect = searchParams.get("redirect");
 
     const {
         register,
@@ -27,7 +41,7 @@ export default function RegisterPage() {
     const onSubmit = async (data: RegisterInput) => {
         setError(null);
         try {
-            await register_.mutateAsync(data);
+            await register_.mutateAsync({ ...data, redirect: redirect ?? undefined });
         } catch (err: any) {
             setError(err.message || "Registration failed. Please try again.");
         }
@@ -171,7 +185,10 @@ export default function RegisterPage() {
                 <CardFooter>
                     <p className="text-center text-sm text-muted-foreground w-full">
                         Already have an account?{" "}
-                        <Link href="/login" className="text-primary hover:underline font-medium">
+                        <Link
+                            href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login"}
+                            className="text-primary hover:underline font-medium"
+                        >
                             Sign in
                         </Link>
                     </p>
