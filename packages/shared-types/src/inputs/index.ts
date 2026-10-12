@@ -44,3 +44,11 @@ export interface InviteMemberInput {
 export interface UpdateMemberRoleInput {
     role: Role;
 }
+
+/**
+ * Request to generate a report. The API creates the row and enqueues the job.
+ */
+export interface CreateReportInput {
+    type: "usage" | "members" | "billing";
+    format: "csv" | "pdf";
+}

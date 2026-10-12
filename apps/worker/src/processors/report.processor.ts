@@ -3,24 +3,29 @@ import { Logger } from "@nestjs/common";
 import { Job } from "bullmq";
 import { REPORT_QUEUE, JOBS } from "../queue/queue.constants";
 import type { GenerateReportJob } from "../queue/job.types";
+import { ReportRunnerService } from "@/reports";
 
 @Processor(REPORT_QUEUE)
 export class ReportProcessor extends WorkerHost {
     private readonly logger = new Logger(ReportProcessor.name);
+
+    constructor(private readonly runner: ReportRunnerService) {
+        super();
+    }
 
     async process(job: Job<GenerateReportJob>): Promise<void> {
         if (job.name !== JOBS.GENERATE_REPORT) {
             throw new Error(`Unknown report job name: ${job.name}`);
         }
 
-        const { tenantId, reportType, requestedBy } = job.data;
+        const { reportId, reportType, format } = job.data;
         this.logger.log(
-            `Generating ${reportType} report for tenant ${tenantId} (requested by ${requestedBy})`,
+            `Generating ${reportType} report as ${format} (report ${reportId})`,
         );
 
-        // Simulate a long-running report build.
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        this.logger.log(`Report ${job.id} generated`);
+        // Report failures are recorded on the Report row and re-thrown so the
+        // shared retry policy applies.
+        await this.runner.run(job.data);
     }
 
     @OnWorkerEvent("completed")

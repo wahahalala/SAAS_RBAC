@@ -16,6 +16,9 @@ import type {
     InvitationPreviewResponse,
     InvitationSummaryResponse,
     AcceptInvitationResponse,
+    CreateReportInput,
+    CreateReportResponse,
+    ReportResponse,
 } from "@saas/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
@@ -311,6 +314,57 @@ class ApiClient {
             { method: "POST", tenantScoped: false }
         );
     }
+
+    // Report endpoints. All tenant-scoped: a report belongs to the tenant whose
+    // data it contains, so TenantGuard must authorise the active tenant.
+    async createReport(data: CreateReportInput) {
+        return this.request<CreateReportResponse>("/reports", {
+            method: "POST",
+            body: JSON.stringify(data),
+        });
+    }
+
+    async listReports() {
+        return this.request<ReportResponse[]>("/reports");
+    }
+
+    async getReport(id: string) {
+        return this.request<ReportResponse>(`/reports/${id}`);
+    }
+
+    /**
+     * Download a completed report.
+     *
+     * The endpoint is authenticated (Bearer + X-Tenant-Id), so a plain link
+     * would not carry the token — fetch the bytes and hand them to the browser
+     * as an object URL instead.
+     */
+    async downloadReport(id: string): Promise<{ blob: Blob; fileName: string }> {
+        const headers = this.buildHeaders(true);
+
+        const response = await fetch(`${this.baseUrl}/reports/${id}/download`, {
+            headers,
+            credentials: "include",
+        });
+
+        if (!response.ok) {
+            throw await this.handleError(response);
+        }
+
+        const fileName = parseFileName(
+            response.headers.get("content-disposition")
+        );
+
+        return { blob: await response.blob(), fileName };
+    }
+}
+
+/** Read `filename="..."` out of a Content-Disposition header. */
+function parseFileName(header: string | null): string {
+    if (!header) return "report";
+
+    const match = /filename="?([^"\r\n;]+)"?/.exec(header);
+    return match?.[1] ?? "report";
 }
 
 export const apiClient = new ApiClient(API_URL);

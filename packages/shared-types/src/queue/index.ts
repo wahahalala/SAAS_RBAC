@@ -66,12 +66,25 @@ export interface InviteEmailJob {
     inviteUrl: string;
 }
 
+/**
+ * A report generation job.
+ *
+ * Carries `reportId` (the `Report` row the API already created) so the worker
+ * can advance that row's status, and `format` so it knows which artifact to
+ * build. `requestedBy` is kept for logging/audit.
+ */
 export interface GenerateReportJob {
     type: "generate-report";
+    reportId: string;
     tenantId: string;
-    reportType: "usage" | "members" | "billing";
+    reportType: ReportTypeName;
+    format: ReportFormatName;
     requestedBy: string;
 }
+
+export type ReportTypeName = "usage" | "members" | "billing";
+export type ReportFormatName = "csv" | "pdf";
+export type ReportStateName = "pending" | "processing" | "completed" | "failed";
 
 export interface SendNotificationJob {
     type: "send-notification";

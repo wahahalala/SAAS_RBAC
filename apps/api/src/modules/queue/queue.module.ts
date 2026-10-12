@@ -1,7 +1,8 @@
 import { Module } from "@nestjs/common";
 import { BullModule } from "@nestjs/bullmq";
-import { EMAIL_QUEUE } from "./queue.constants";
+import { EMAIL_QUEUE, REPORT_QUEUE } from "./queue.constants";
 import { EmailQueueService } from "./email-queue.service";
+import { ReportQueueService } from "./report-queue.service";
 
 /**
  * Producer-side queue module for the API.
@@ -14,8 +15,13 @@ import { EmailQueueService } from "./email-queue.service";
  * boot; enqueue calls fail (and the caller decides how to react).
  */
 @Module({
-    imports: [BullModule.registerQueue({ name: EMAIL_QUEUE })],
-    providers: [EmailQueueService],
-    exports: [EmailQueueService],
+    imports: [
+        BullModule.registerQueue(
+            { name: EMAIL_QUEUE },
+            { name: REPORT_QUEUE },
+        ),
+    ],
+    providers: [EmailQueueService, ReportQueueService],
+    exports: [EmailQueueService, ReportQueueService],
 })
 export class QueueModule {}

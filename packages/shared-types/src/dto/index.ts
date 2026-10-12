@@ -1,4 +1,9 @@
 import { Role, Plan, InvitationStatus } from "../constants";
+import type {
+    ReportTypeName,
+    ReportFormatName,
+    ReportStateName,
+} from "../queue";
 
 /**
  * Auth response returned by register / login / refresh.
@@ -161,4 +166,32 @@ export interface AcceptInvitationResponse {
     role: Role | string;
     /** True when the caller was already a member (idempotent accept). */
     alreadyMember: boolean;
+}
+
+/**
+ * A report as exposed by the API.
+ *
+ * `filePath` is deliberately absent: it is server-side storage detail. Clients
+ * download through `GET /reports/:id/download`, which re-checks tenant
+ * membership — so a leaked id cannot be used to fetch another tenant's file.
+ */
+export interface ReportResponse {
+    id: string;
+    tenantId: string;
+    type: ReportTypeName;
+    format: ReportFormatName;
+    status: ReportStateName;
+    fileName: string | null;
+    fileSize: number | null;
+    rowCount: number | null;
+    error: string | null;
+    requestedById: string;
+    startedAt: Date | string | null;
+    completedAt: Date | string | null;
+    createdAt: Date | string;
+}
+
+/** Result of requesting a new report: the row plus the enqueued job id. */
+export interface CreateReportResponse extends ReportResponse {
+    jobId: string | null;
 }

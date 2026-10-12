@@ -9,6 +9,7 @@ import { EmailProcessor } from "../processors/email.processor";
 import { ReportProcessor } from "../processors/report.processor";
 import { NotificationProcessor } from "../processors/notification.processor";
 import { JobStatusService } from "./job-status.service";
+import { ReportsModule } from "@/reports";
 
 /**
  * WorkerModule wires all queue PROCESSORS together plus the job-status query
@@ -16,6 +17,7 @@ import { JobStatusService } from "./job-status.service";
  */
 @Module({
     imports: [
+        ReportsModule,
         BullModule.registerQueue(
             { name: EMAIL_QUEUE },
             { name: REPORT_QUEUE },

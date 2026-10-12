@@ -13,6 +13,7 @@ import { JwtAuthGuard } from "./modules/auth/guards";
 import { UsersModule } from "./modules/users/users.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
 import { InvitationsModule } from "./modules/invitations/invitations.module";
+import { ReportsModule } from "./modules/reports/reports.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { HealthModule } from "./modules/health/health.module";
 
@@ -67,6 +68,7 @@ import { HealthModule } from "./modules/health/health.module";
         UsersModule,
         OrganizationsModule,
         InvitationsModule,
+        ReportsModule,
         ProjectsModule,
         TenantModule,
     ],

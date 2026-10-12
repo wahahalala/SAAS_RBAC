@@ -16,6 +16,7 @@ import {
     TooltipProvider,
 } from "@/components/ui/tooltip";
 import { useCurrentOrganization } from "@/hooks";
+import { ReportsPanel } from "@/components/dashboard";
 
 const plans = [
     {
@@ -209,6 +210,9 @@ export default function BillingPage() {
                         );
                     })}
                 </div>
+
+                {/* Reports (async export) */}
+                <ReportsPanel />
 
                 {/* FAQ Section */}
                 <Card>

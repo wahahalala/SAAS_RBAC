@@ -35,6 +35,7 @@ model Tenant {
   subscriptions Subscription[]
   usageRecords UsageRecord[]
   notifications Notification[]
+  reports      Report[]
 
   @@map("tenants")
 }
@@ -84,6 +85,7 @@ model User {
   memberships   Membership[]
   invitations   Invitation[]      @relation("InvitedBy")
   acceptedInvitations Invitation[] @relation("AcceptedBy")
+  requestedReports Report[]      @relation("ReportRequestedBy")
   refreshSessions RefreshSession[]
   auditLogs     AuditLog[]
   notifications Notification[]
@@ -296,6 +298,65 @@ model UsageRecord {
 // ============================================
 // Audit log
 // ============================================
+
+// ============================================
+// Reports (async generation)
+// ============================================
+
+/**
+ * A report requested by a user and produced asynchronously by the worker.
+ *
+ * The row is created by the API (status `pending`) BEFORE the job is
+ * enqueued, so the client can poll a stable id from the moment it asks. The
+ * worker then advances `status` and, on success, records the generated file.
+ */
+model Report {
+  id          String       @id @default(uuid())
+  tenantId    String
+  type        ReportType
+  format      ReportFormat
+  status      ReportStatus @default(pending)
+
+  // Absolute path of the generated artifact on the worker's storage volume.
+  // Null until the job succeeds.
+  filePath    String?
+  fileName    String?
+  fileSize    Int?
+  rowCount    Int?
+
+  error       String?
+  requestedById String
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy User   @relation("ReportRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("reports")
+}
+
+enum ReportType {
+  usage
+  members
+  billing
+}
+
+enum ReportFormat {
+  csv
+  pdf
+}
+
+enum ReportStatus {
+  pending
+  processing
+  completed
+  failed
+}
 
 model AuditLog {
   id             String   @id @default(uuid())

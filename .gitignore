@@ -35,6 +35,9 @@ yarn-error.log*
 coverage
 .nyc_output
 
+# Generated report artifacts (local dev output)
+storage/
+
 # Prisma
 apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
