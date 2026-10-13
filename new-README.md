@@ -532,6 +532,16 @@ pnpm --filter web e2e          # Playwright over the real browser
 单测 → `pnpm test` → 涉及跨进程/浏览器行为时跑 e2e → 更新 README（重大功能）→
 commits 交给 `.github/workflows/ci.yml` 的 `checks` + `e2e` 两道门。
 
+> **跑测试前先停掉 `pnpm dev`。** 几个 Vitest 套件（`queue-invite-email`、
+> `queue-report`、`domain-event-bridge`）会起一个真实 `Worker` 去消费 Redis
+> 队列，用来验证 producer/consumer 契约。如果本机同时跑着 dev 的 worker，
+> 它会把这个 job 抢走，测试就永远等不到（表现为 10s 超时）。同样地，这些
+> 套件会 `cleanDatabase()`，跑完会清掉本地 seed 数据——重新执行
+> `pnpm --filter api db:seed` 即可恢复 `admin@example.com / Admin123!`。
+>
+> Windows 上 `kill` 常只终止父进程，`node` 子进程会残留并继续占用队列；
+> 用 `tasklist //FI "IMAGENAME eq node.exe"` 查出后逐个 `taskkill //F //PID <pid>`。
+
 ## 🚢 Production deployment
 
 Production runs exactly one Compose stack — nginx, the web app, the API, the
