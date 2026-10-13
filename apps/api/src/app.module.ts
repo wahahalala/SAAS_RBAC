@@ -18,6 +18,8 @@ import { ReportsModule } from "./modules/reports/reports.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { HealthModule } from "./modules/health/health.module";
+import { MetricsModule } from "./common/metrics/metrics.module";
+import { MetricsInterceptor } from "./common/metrics/metrics.interceptor";
 
 @Module({
     imports: [
@@ -61,6 +63,7 @@ import { HealthModule } from "./modules/health/health.module";
         PrismaModule,
         RedisModule,
         HealthModule,
+        MetricsModule,
 
         // Queue producers (BullMQ)
         QueueModule,
@@ -96,6 +99,12 @@ import { HealthModule } from "./modules/health/health.module";
         {
             provide: APP_INTERCEPTOR,
             useClass: TenantInterceptor,
+        },
+        // Counts every request for /metrics (after the tenant context has been
+        // opened, so the metrics path never thread-leaks tenant state).
+        {
+            provide: APP_INTERCEPTOR,
+            useClass: MetricsInterceptor,
         },
         // Permission guard (RBAC). Runs after TenantGuard so request.tenantId
         // is available for resolving Membership -> Role -> Permissions.

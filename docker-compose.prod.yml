@@ -1,0 +1,228 @@
+# ============================================================
+# Production stack.
+#
+#   nginx (ingress) ──▶ web (Next.js) ──▶ api (NestJS) ──▶ postgres
+#                                          │                    redis
+#                                          └──▶ worker (BullMQ)
+#
+# Run:
+#   cp .env.production.example .env.production   # fill in the secrets
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Everything except nginx lives on the internal `backend` network; nginx is the
+# only service that binds a host port. Grafana and Prometheus bind host ports
+# too, but only for scraping/UI access — restrict those with a firewall or move
+# them off the public box when exposing them.
+# ============================================================
+
+services:
+  # ------------------------------------------------------------- ingress
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: saas-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443" # forward TLS here when a TLS sidecar/proxy terminates on the host
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - backend
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ------------------------------------------------------------- frontend
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: saas-web
+    restart: unless-stopped
+    expose:
+      - "3000"
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      # The server-side API origin is the internal service name.
+      API_ORIGIN: http://api:3001
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend
+    logging: *logging
+
+  # ------------------------------------------------------------- backend
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: saas-api
+    restart: unless-stopped
+    expose:
+      - "3001"
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    volumes:
+      - reports:/app/storage/reports
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    networks:
+      - backend
+    logging: *logging
+
+  # ------------------------------------------------------------- migrations
+  # Runs `prisma migrate deploy` once and exits. The api waits for it, so the
+  # schema is always current before the app boots.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    container_name: saas-migrate
+    env_file: .env.production
+    command: ["sh", "-c", "cd apps/api && npx prisma migrate deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    logging: *logging
+
+  # ------------------------------------------------------------- worker
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: saas-worker
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+    volumes:
+      - reports:/app/storage/reports
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # The worker has no HTTP surface; its health is "the process is alive" (a
+    # crashed worker container is restarted by `restart: unless-stopped`).
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend
+    logging: *logging
+
+  # ------------------------------------------------------------- data
+  postgres:
+    image: postgres:16-alpine
+    container_name: saas-postgres
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: saas-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    logging: *logging
+
+  # ------------------------------------------------------------- monitoring
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: saas-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: saas-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3300:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - backend
+    logging: *logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  reports:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  backend:
+    driver: bridge

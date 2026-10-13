@@ -367,6 +367,67 @@ and the `e2e` job's database never interfere.
 | **Auth** | JWT, Passport.js, bcrypt |
 | **Tooling** | pnpm, Turborepo, TypeScript 5.7 |
 
+## 🏗 Architecture
+
+```
+                                   ┌──────────────────────────────┐
+                                   │          Ingress              │
+                                   │      nginx (port 80/443)      │
+                                   └──────────────┬───────────────┘
+                                                  │
+                         (serves pages + proxies /api/* & /_next/static/*)
+                                                  │
+                                   ┌──────────────▼───────────────┐
+                                   │      web  (Next.js, :3000)     │
+                                   │  App Router · RSC · Server     │
+                                   │  Actions · BFF route handlers  │
+                                   └──────┬──────────────────┬─────┘
+                                          │ /api/v1/*        │ /api/auth/* + /api/healthz
+                                          │ (rewrite)        │ (Route Handler)
+                              ┌───────────▼──────┐          │
+                              │ api (NestJS,:3001)│◄─────────┘
+                              │  JWT → Tenant →  │
+                              │  Permission guards│
+                              └───┬────────┬──────┘
+                     producers    │        │        producers
+                     (BullMQ)     │        │
+              ┌───────────────────▼─┐      ▼──────────────────────┐
+              │   postgres 16       │    redis 7                  │
+              │   (Prisma)          │    (cache · queue · rate)   │
+              └─────────────────────┘    ▲                        │
+                                         │ consume (BullMQ)        │
+                              ┌──────────┴──────────┐             │
+                              │ worker (NestJS)      │             │
+                              │ (report generation,  │─────────────┘
+                              │  invitation email)    │
+                              └──────────┬───────────┘
+                                         │ shared volume (reports)
+                              ┌──────────▼───────────┐
+                              │   storage/reports    │
+                              └──────────────────────┘
+
+                     ┌──────────────┐        ┌──────────────┐
+                     │ Prometheus    │───────▶│ Grafana      │
+                     │ (scrapes /api │        │ (dashboards, │
+                     │  /v1/metrics) │        │  :3300)      │
+                     └──────────────┘        └──────────────┘
+```
+
+Key points:
+
+- **One origin.** nginx fronts *everything* the browser touches, so the app's
+  same-origin `httpOnly` refresh cookie (see
+  [How server rendering authenticates](#how-server-rendering-authenticates)) keeps
+  working in production without CORS.
+- **The web app owns the API surface.** `/api/v1/*` is a Next.js *rewrite* to the
+  API and `/api/auth/*` is a Route Handler that re-homes the refresh cookie;
+  the browser never talks to the API directly.
+- **api vs worker.** The API *produce* BullMQ jobs; the worker *consumes* them.
+  They share the report volume so the worker writes artifacts the API streams
+  back on download.
+- **Observability.** the API exposes `/api/v1/health` (dependency check, 200/503)
+  and `/api/v1/metrics` (Prometheus text), scraped into Grafana.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -449,6 +510,107 @@ docker compose down -v
 | `pnpm db:seed` | Seed demo data (`prisma db seed`) |
 | `pnpm db:studio` | Open Prisma Studio |
 
+### 开发流程
+
+```bash
+# Boot dependencies once
+docker compose up -d
+
+# Terminal A — backend + worker
+pnpm dev                       # turbo: api (watch) + web (turbopack)
+pnpm --filter worker dev       # BullMQ worker (separate process)
+
+# Terminal B — verification gates (run before every commit)
+pnpm type-check                # tsc --noEmit across all packages
+pnpm lint                      # ESLint across all packages
+pnpm test                      # Vitest: api (unit/integration) + worker + web
+pnpm --filter api test:e2e     # Jest + Supertest over the real API
+pnpm --filter web e2e          # Playwright over the real browser
+```
+
+典型改动循环：改代码 → `pnpm --filter <pkg> type-check && pnpm lint` → 改模块的
+单测 → `pnpm test` → 涉及跨进程/浏览器行为时跑 e2e → 更新 README（重大功能）→
+commits 交给 `.github/workflows/ci.yml` 的 `checks` + `e2e` 两道门。
+
+## 🚢 Production deployment
+
+Production runs exactly one Compose stack — nginx, the web app, the API, the
+worker, Postgres, Redis, Prometheus and Grafana — configured in
+`docker-compose.prod.yml`. Each app ships a multi-stage `Dockerfile` that bakes
+in only the runtime files and runs as a non-root user.
+
+### Deployment steps
+
+```bash
+# 1. Create the production environment file and fill in the secrets.
+cp .env.production.example .env.production
+#    DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET, POSTGRES_PASSWORD …
+#    Generate JWT secrets with: openssl rand -base64 48
+
+# 2. (From a checked-out repo) start the whole stack.
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. Verify every service is healthy.
+docker compose -f docker-compose.prod.yml ps
+
+# 4. Apply pending migrations (also runs automatically at boot via the
+#    one-shot `migrate` service).
+docker compose -f docker-compose.prod.yml run --rm migrate
+```
+
+Order of operations inside Compose (all wired with `depends_on` +
+`service_healthy` / `service_completed_successfully`):
+
+```
+postgres ──healthy──▶ migrate ──completed──▶ api ──healthy──▶ web ──healthy──▶ nginx
+redis    ──healthy──▶ api (queue)            │                │
+                     ▶ worker                └──healthy──▶ prometheus ──▶ grafana
+```
+
+**Before going live** terminate TLS at nginx (a host TLS proxy or certs mounted
+into the nginx container) and point `FRONTEND_URL` / `NEXT_PUBLIC_SITE_URL` at the
+public https origin — the app sets `Secure` cookies in production.
+
+### Environment variables
+
+`.env.production.example` documents every variable. The ones you must override:
+
+| Variable | Service | Meaning |
+|----------|---------|---------|
+| `DATABASE_URL` | api, worker, migrate | `postgresql://` URL; hostname is the Compose service `postgres` |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | postgres | must match `DATABASE_URL` |
+| `JWT_SECRET` / `JWT_REFRESH_SECRET` | api | token signing keys — random, ≥32 bytes, never shared between environments |
+| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` | api, worker | queue/cache/rate-limit backend (`redis` service) |
+| `FRONTEND_URL` | api | CORS origin + OAuth redirect base (`https://app.example.com`) |
+| `API_ORIGIN` | web | where the Next.js server calls the API (`http://api:3001`) |
+| `NEXT_PUBLIC_SITE_URL` / `NEXT_PUBLIC_APP_URL` | web | public origin for absolute links/redirects |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | api, worker | transactional email relay (Mailpit in dev) |
+| `REPORTS_DIR` | api, worker | shared volume path (`/app/storage/reports`) both mounts must agree on |
+| `GRAFANA_ADMIN_PASSWORD` | grafana | initial admin password; change on first login |
+
+`cp .env.production.example .env.production` and commit nothing — `.env.production`
+is gitignored.
+
+### Health checks & monitoring
+
+- **api** `GET /api/v1/health` — real DB + Redis pings; returns `200` when both
+  are up and `503` otherwise, so orchestration fails the container instead of
+  routing into a broken one.
+- **web** `GET /api/healthz` — process liveness for the nginx upstream.
+- **worker** — no HTTP surface; the container healthcheck is process liveness,
+  and `restart: unless-stopped` recovers crashes.
+- **api** `GET /api/v1/metrics` — Prometheus text (`http_requests_total`,
+  `http_request_duration_bucket`), scraped at `http://localhost:9090`.
+- **grafana** — pre-provisioned with the Prometheus datasource and an
+  "SaaS API Overview" dashboard at `http://localhost:3300`.
+
+### Logging
+
+Every container uses the Docker `json-file` driver with rotation (10 MB × 5), so
+`docker compose logs -f <service>` is the log viewing path. nginx writes access
+logs to stdout with request time and forwards `X-Forwarded-*`; the app itself
+logs to Nest/Next standard output, so no log files accumulate inside images.
+
 ## 📁 Project Structure
 
 ```
@@ -471,8 +633,13 @@ docker compose down -v
 │   ├── validation/       # Zod schemas + inferred types
 │   ├── eslint-config/    # ESLint configurations
 │   └── typescript-config/# TypeScript configurations
-├── docker/               # Docker support files (pgAdmin config, ...)
-└── docker-compose.yml    # Local services (PostgreSQL, Redis, Mailpit, pgAdmin, Redis Insight)
+├── docker/               # Docker support files (nginx, pgAdmin, prometheus, grafana)
+├── docker-compose.yml        # Local development services (PostgreSQL, Redis, Mailpit, pgAdmin, Redis Insight)
+├── docker-compose.prod.yml   # Production stack (nginx, web, api, worker, postgres, redis, prometheus, grafana)
+├── apps/api/Dockerfile       # NestJS API production image
+├── apps/web/Dockerfile       # Next.js standalone production image
+├── apps/worker/Dockerfile    # BullMQ worker production image
+└── .env.production.example   # Production environment variable reference
 ```
 
 ## 📜 Available Scripts

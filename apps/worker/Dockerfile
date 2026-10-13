@@ -21,8 +21,18 @@ RUN pnpm --filter worker build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
+# Non-root user: the worker needs write access ONLY to REPORTS_DIR, which the
+# Compose file mounts as a shared volume. Create that directory owned by the
+# unprivileged user so a fresh Docker-managed volume (root-owned) doesn't make
+# report writes fail.
+RUN addgroup -S app && adduser -S app -G app \
+    && mkdir -p /app/storage/reports && chown -R app:app /app/storage
+
 COPY --from=build /app/apps/worker/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/worker/package.json ./package.json
+
+USER app
 
 CMD ["node", "dist/main.js"]

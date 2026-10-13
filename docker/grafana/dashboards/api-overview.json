@@ -1,0 +1,45 @@
+{
+  "title": "SaaS API Overview",
+  "uid": "saas-api",
+  "tags": ["saas", "api"],
+  "refresh": "30s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request rate by status",
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "p99 request duration",
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_bucket[5m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request duration buckets",
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (route) (rate(http_request_duration_bucket[5m]))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 }
+    }
+  ]
+}

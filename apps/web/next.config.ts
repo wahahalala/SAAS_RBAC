@@ -54,6 +54,11 @@ const nextConfig: NextConfig = {
 
     // Transpile shared packages
     transpilePackages: ["@saas/shared", "@saas/shared-types", "@saas/validation"],
+
+    // Self-contained production build: `next build` emits a minimal `server.js`
+    // plus the traced runtime files into `.next/standalone`, which the web
+    // Dockerfile copies instead of the full `node_modules`.
+    output: "standalone",
 };
 
 export default nextConfig;
