@@ -1,5 +1,6 @@
 import { Controller, Get, Header } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
+import { Public } from "@/common/decorators";
 import { MetricsService } from "@/common/metrics/metrics.service";
 
 /**
@@ -14,10 +15,11 @@ import { MetricsService } from "@/common/metrics/metrics.service";
  *         - targets: ["api:3001"]
  *       metrics_path: /api/v1/metrics
  *
- * This endpoint is behind the API's own auth by default (it lives under the
- * global guards), so a production scrape job must either be given a token or
- * the endpoint be marked public + protected by the network. The Compose file
- * puts Prometheus on an internal network, so the endpoint is left unscoped.
+ * Marked `@Public()` so an unauthenticated scrape succeeds, and deliberately
+ * NOT tenant-scoped (it reports request counts by route, never tenant data).
+ * Production deployments must keep this endpoint off the public internet —
+ * `docker-compose.prod.yml` puts Prometheus on the internal network and does not
+ * expose the API port; if you publish it, gate `/metrics` at the proxy.
  */
 @ApiTags("Metrics")
 @Controller("metrics")
@@ -25,6 +27,7 @@ export class MetricsController {
     constructor(private readonly metrics: MetricsService) {}
 
     @Get()
+    @Public()
     @Header("Content-Type", "text/plain; version=0.0.4")
     @ApiOperation({ summary: "Prometheus metrics" })
     render(): string {

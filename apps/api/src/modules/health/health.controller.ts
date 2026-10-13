@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { Response } from "express";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/modules/redis/redis.service";
+import { Public } from "@/common/decorators";
 
 /**
  * Liveness/readiness probe for the orchestrator.
@@ -26,6 +27,7 @@ export class HealthController {
     ) {}
 
     @Get()
+    @Public()
     @ApiOperation({ summary: "Health check" })
     async check(@Res() res: Response) {
         const [dbHealthy, redisHealthy] = await Promise.all([
