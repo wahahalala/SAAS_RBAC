@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { acceptInvitationAction } from "@/app/actions/invitations";
+import type { Dictionary } from "@/lib/i18n/format";
 
 /**
  * Accept button.
@@ -12,7 +13,13 @@ import { acceptInvitationAction } from "@/app/actions/invitations";
  * The mutation is a Server Action, so the session token is never touched by
  * client code; on success it redirects to the organization that was just joined.
  */
-export function AcceptInvitationButton({ token }: { token: string }) {
+export function AcceptInvitationButton({
+    token,
+    dict,
+}: {
+    token: string;
+    dict: Dictionary["invitation"];
+}) {
     const router = useRouter();
     const [isPending, setIsPending] = useState(false);
 
@@ -41,7 +48,7 @@ export function AcceptInvitationButton({ token }: { token: string }) {
             ) : (
                 <CheckCircle2 className="mr-2 h-4 w-4" />
             )}
-            Accept invitation
+            {dict.acceptButton}
         </Button>
     );
 }

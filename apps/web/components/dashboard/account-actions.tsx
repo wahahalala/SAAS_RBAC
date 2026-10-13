@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { logoutAction } from "@/app/actions/auth";
 import { deleteAccountAction } from "@/app/actions/account";
+import type { Dictionary } from "@/lib/i18n/format";
 
 /**
  * Account actions (sign out, delete account).
@@ -25,7 +26,8 @@ import { deleteAccountAction } from "@/app/actions/account";
  * irreversible, so it is confirmed first — the confirmation is UI state and
  * stays on the client, while the deletion itself is a Server Action.
  */
-export function AccountActions() {
+export function AccountActions({ dict }: { dict: Dictionary }) {
+    const t = dict.dashboard.settings;
     const [isPending, startTransition] = useTransition();
 
     const handleDelete = () => {
@@ -45,9 +47,9 @@ export function AccountActions() {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="font-medium">Sign out</p>
+                    <p className="font-medium">{t.signOut}</p>
                     <p className="text-sm text-muted-foreground">
-                        Sign out from this device
+                        {t.signOutDescription}
                     </p>
                 </div>
                 <Button
@@ -61,36 +63,34 @@ export function AccountActions() {
                         })
                     }
                 >
-                    Sign out
+                    {t.signOut}
                 </Button>
             </div>
 
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="font-medium">Delete account</p>
+                    <p className="font-medium">{t.deleteAccount}</p>
                     <p className="text-sm text-muted-foreground">
-                        Permanently delete your account and all data
+                        {t.deleteAccountDescription}
                     </p>
                 </div>
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
                         <Button variant="destructive" disabled={isPending}>
-                            Delete account
+                            {t.deleteAccount}
                         </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                         <AlertDialogHeader>
                             <AlertDialogTitle>
-                                Delete your account?
+                                {t.deleteAccountTitle}
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                                This permanently deletes your account and the
-                                memberships that link you to organizations. It
-                                cannot be undone.
+                                {t.deleteAccountWarning}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel>{dict.common.cancel}</AlertDialogCancel>
                             <AlertDialogAction
                                 onClick={handleDelete}
                                 disabled={isPending}
@@ -98,7 +98,7 @@ export function AccountActions() {
                                 {isPending && (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 )}
-                                Delete account
+                                {t.deleteAccount}
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>

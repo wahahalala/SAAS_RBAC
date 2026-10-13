@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTransition } from "react";
 import { logoutAction } from "@/app/actions/auth";
+import type { Dictionary } from "@/lib/i18n/format";
 import type { UserResponse } from "@saas/shared-types";
 
 /**
@@ -22,7 +23,13 @@ import type { UserResponse } from "@saas/shared-types";
  * Interaction only: the user is passed in from the Server Component layout, and
  * signing out runs a Server Action (which clears the cookie server-side).
  */
-export function UserNav({ user }: { user: UserResponse | null }) {
+export function UserNav({
+    user,
+    dict,
+}: {
+    user: UserResponse | null;
+    dict: Dictionary["dashboard"]["userMenu"];
+}) {
     const [isPending, startTransition] = useTransition();
 
     const getInitials = (name: string | null) => {
@@ -58,13 +65,13 @@ export function UserNav({ user }: { user: UserResponse | null }) {
                 <DropdownMenuItem asChild>
                     <Link href="/dashboard/settings">
                         <User className="mr-2 h-4 w-4" />
-                        Profile
+                        {dict.profile}
                     </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                     <Link href="/dashboard/settings">
                         <Settings className="mr-2 h-4 w-4" />
-                        Settings
+                        {dict.settings}
                     </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -80,7 +87,7 @@ export function UserNav({ user }: { user: UserResponse | null }) {
                     className="text-destructive focus:text-destructive"
                 >
                     <LogOut className="mr-2 h-4 w-4" />
-                    Log out
+                    {dict.logOut}
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

@@ -19,6 +19,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { inviteMemberAction } from "@/app/actions/tenant";
+import { interpolate, type Dictionary } from "@/lib/i18n/format";
 
 /**
  * Invite a member.
@@ -27,7 +28,8 @@ import { inviteMemberAction } from "@/app/actions/tenant";
  * and revalidates the team page — so the new invitation appears because the
  * Server Component re-rendered, not because a client cache was patched.
  */
-export function InviteMemberDialog() {
+export function InviteMemberDialog({ dict }: { dict: Dictionary }) {
+    const t = dict.dashboard.team;
     const [isOpen, setIsOpen] = useState(false);
     const [isPending, startTransition] = useTransition();
 
@@ -50,7 +52,7 @@ export function InviteMemberDialog() {
                 return;
             }
 
-            toast.success(`Invitation sent to ${data.email}`);
+            toast.success(interpolate(t.invitationSentTo, { email: data.email }));
             setIsOpen(false);
             reset();
         });
@@ -67,19 +69,17 @@ export function InviteMemberDialog() {
             <DialogTrigger asChild>
                 <Button className="gap-2">
                     <Plus className="h-4 w-4" />
-                    Invite Member
+                    {t.inviteMember}
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Invite Team Member</DialogTitle>
-                    <DialogDescription>
-                        Send an invitation to join your organization
-                    </DialogDescription>
+                    <DialogTitle>{t.inviteTitle}</DialogTitle>
+                    <DialogDescription>{t.inviteDescription}</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="email">Email address</Label>
+                        <Label htmlFor="email">{t.inviteEmailLabel}</Label>
                         <Input
                             id="email"
                             type="email"
@@ -93,7 +93,7 @@ export function InviteMemberDialog() {
                         )}
                     </div>
                     <div className="space-y-2">
-                        <Label>Role</Label>
+                        <Label>{t.inviteRole}</Label>
                         <div className="grid grid-cols-2 gap-4">
                             <label className="relative flex cursor-pointer rounded-lg border p-4 hover:bg-muted/50 [&:has(:checked)]:border-primary [&:has(:checked)]:bg-primary/5">
                                 <input
@@ -103,9 +103,9 @@ export function InviteMemberDialog() {
                                     className="sr-only"
                                 />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Member</span>
+                                    <span className="font-medium">{t.roleMember}</span>
                                     <span className="text-xs text-muted-foreground">
-                                        Can view and edit
+                                        {t.roleMemberHint}
                                     </span>
                                 </div>
                             </label>
@@ -117,9 +117,9 @@ export function InviteMemberDialog() {
                                     className="sr-only"
                                 />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Admin</span>
+                                    <span className="font-medium">{t.roleAdmin}</span>
                                     <span className="text-xs text-muted-foreground">
-                                        Full access
+                                        {t.roleAdminHint}
                                     </span>
                                 </div>
                             </label>
@@ -131,13 +131,13 @@ export function InviteMemberDialog() {
                             variant="outline"
                             onClick={() => setIsOpen(false)}
                         >
-                            Cancel
+                            {dict.common.cancel}
                         </Button>
                         <Button type="submit" disabled={isPending}>
                             {isPending && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Send Invitation
+                            {t.sendInvitation}
                         </Button>
                     </DialogFooter>
                 </form>

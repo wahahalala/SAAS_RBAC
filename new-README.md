@@ -26,6 +26,7 @@ A production-ready, open-source SaaS starter template built with modern technolo
 - [x] **Domain events**: `USER_CREATED` / `TENANT_CREATED` / `ROLE_CHANGED` / `REPORT_COMPLETED` over NestJS EventEmitter, with email, audit and analytics listeners
 - [x] **Enterprise audit trail**: six auditable actions written to `AuditLog`, queryable via `GET /audit-logs` with pagination, filtering and search
 - [x] **Server-rendered frontend**: RSC data fetching, Server Actions for mutations, Route Handlers as BFF, TanStack Query only for polling, Zustand only for UI state
+- [x] **Bilingual UI (English / 中文)**: cookie-based locale resolved on the server, typed dictionaries (`en` is the contract), switcher in the dashboard header, auth pages and landing page
 - [x] Team management UI
 - [x] **Tenant isolation**: global guards run `JwtAuthGuard` → `TenantGuard` → `PermissionGuard` (in that order, registered on `AppModule`); `TenantGuard` validates `X-Tenant-Id` against the caller's Membership and `TenantInterceptor` opens a `TenantContext` (AsyncLocalStorage) for the request. Every service query filters on that authorised `tenantId` — there is no Prisma auto-scoping layer (Tenant A can never read Tenant B data)
 - [x] **Slug lookups are tenant-bound**: organization routes address the org by slug, which is resolved *within* the request's tenant — a member of two tenants cannot use one tenant's `X-Tenant-Id` to operate on the other's organization. There is no Prisma auto-scoping extension; scoping is explicit and fail-closed (`TenantContext.requireTenantId()`).
@@ -58,6 +59,7 @@ server**. Client state is only for what the browser itself owns.
 | BFF / streams (downloads, polling) | Route Handlers | `app/api/**/route.ts` |
 | Client-side server state (polling) | TanStack Query | `components/dashboard/reports-panel.tsx` |
 | UI state | Zustand | `lib/stores/ui-store.ts` |
+| Interface language | Cookie + dictionary | `lib/i18n/*`, switched by `app/actions/locale.ts` |
 
 Consequences worth knowing:
 
@@ -73,6 +75,46 @@ Consequences worth knowing:
   holds only UI preferences.
 - **The active tenant is a cookie, not localStorage.** Server Components must
   scope their fetches by tenant, and only a cookie is readable on the server.
+
+### Internationalisation (English / 中文)
+
+The interface ships in **English (`en`, default) and Simplified Chinese (`zh`)**,
+switchable from the button in the top-right of the dashboard header, the auth
+pages and the landing page.
+
+The language is a **cookie** (`saas.locale`) resolved on the server, for the same
+reason the tenant is: the copy is rendered by Server Components, so a
+client-only language store would produce a flash of English and a hydration
+mismatch. Picking a language runs a Server Action (`app/actions/locale.ts`) that
+writes the cookie and revalidates the layout, so the whole tree re-renders with
+the new dictionary. `<html lang>` follows the locale, which keeps screen readers
+and font selection correct.
+
+```
+lib/i18n/
+├── config.ts             # LOCALES ('en' | 'zh'), default, endonym labels
+├── dictionaries/en.ts    # the reference dictionary; Dictionary type is derived from it
+├── dictionaries/zh.ts    # typed as Dictionary -> a missing key is a compile error
+├── locale-cookie.ts      # SERVER ONLY (next/headers)
+├── index.ts              # SERVER ONLY: getDictionary() resolve the active dictionary
+└── format.ts             # CLIENT SAFE: Dictionary type + interpolate()
+```
+
+Two rules keep this working:
+
+1. **Client Components import from `lib/i18n/format`, never `lib/i18n`.** The
+   index module reads `cookies()`, and `next/headers` cannot be bundled for the
+   browser — importing it from a Client Component fails the build with
+   *"You're importing a component that needs next/headers"*. Client components
+   receive their dictionary slice as a **prop** from a Server Component page.
+2. **`zh.ts` is annotated `Dictionary`,** which is the widened shape of `en.ts`,
+   so translating a new key is forced rather than remembered. `test/i18n.spec.ts`
+   additionally asserts identical leaf structure, no untranslated leftovers and
+   matching `{placeholder}` sets between locales.
+
+Adding a locale = add a `zh`-style dictionary, register it in `lib/i18n/index.ts`
+and `config.ts`. Adding a string = add it to `en.ts` first (type-check then
+points at every locale that still needs it).
 
 #### How server rendering authenticates
 
@@ -300,6 +342,7 @@ Behaviour worth knowing:
 | `apps/worker/test/report-writers.spec.ts` | CSV RFC 4180 escaping and real PDF output (magic/trailer/pagination) |
 | `apps/web/test/server-fetch.spec.ts` | server data layer: tenant header, active-tenant reconciliation (cookie → first membership), error contract, no-store caching |
 | `apps/web/test/architecture.spec.ts` | structural guardrails: no client pages, no `useEffect` fetching, no server data in client stores |
+| `apps/web/test/i18n.spec.ts` | dictionary integrity: identical leaf structure across locales, no untranslated leftovers, matching `{placeholder}` sets, `interpolate` behaviour |
 
 #### End-to-end
 
@@ -320,6 +363,7 @@ still streaming).
 | `apps/web/e2e/login.spec.ts` | Playwright | wrong password renders an inline error and stays on `/login`; the seeded admin lands on the dashboard; `/dashboard` redirects signed-out users to `/login?redirect=` |
 | `apps/web/e2e/tenant-switch.spec.ts` | Playwright | creating an organization from the switcher makes it active (Server Action writes the tenant cookie and the server re-renders); switching back re-renders |
 | `apps/web/e2e/permission-ui.spec.ts` | Playwright | the server-side permission gate: the admin sees the billing "Reports" panel, a permission-less member does not (it is server-removed, not CSS-hidden) |
+| `apps/web/e2e/language-switch.spec.ts` | Playwright | switching en ⇄ zh on the login page, the choice surviving a reload (server cookie), translated dashboard chrome, and the `html lang` attribute following the locale |
 
 ```bash
 # API e2e — spins up the Nest app in memory; uses its OWN database (<name>_e2e),

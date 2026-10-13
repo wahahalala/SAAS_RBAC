@@ -1,6 +1,9 @@
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar, UserNav, CommandPalette } from "@/components/dashboard";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
+import { getLocale } from "@/lib/i18n/locale-cookie";
+import { getDictionary } from "@/lib/i18n";
 import { getTenantContext } from "@/lib/server/tenant";
 
 /**
@@ -20,6 +23,7 @@ export default async function DashboardLayout({
     const { user, organizations, activeOrganization } = await getTenantContext(
         "/dashboard",
     );
+    const [locale, dict] = await Promise.all([getLocale(), getDictionary()]);
 
     return (
         <SidebarProvider>
@@ -27,14 +31,22 @@ export default async function DashboardLayout({
                 user={user}
                 organizations={organizations}
                 activeOrganization={activeOrganization}
+                dict={dict}
             />
             <SidebarInset>
                 <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
                     <SidebarTrigger className="-ml-1" />
                     <Separator orientation="vertical" className="mr-2 h-4" />
-                    <CommandPalette />
+                    <CommandPalette
+                        dict={dict.dashboard.commandPalette}
+                        nav={dict.dashboard.nav}
+                    />
                     <div className="flex-1" />
-                    <UserNav user={user} />
+                    <LanguageSwitcher
+                        currentLocale={locale}
+                        label={dict.languageSwitcher.label}
+                    />
+                    <UserNav user={user} dict={dict.dashboard.userMenu} />
                 </header>
                 <main className="flex-1 overflow-auto p-6">{children}</main>
             </SidebarInset>

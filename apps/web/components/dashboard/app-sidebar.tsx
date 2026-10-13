@@ -35,21 +35,26 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { OrgSwitcher } from "./org-switcher";
 import { logoutAction } from "@/app/actions/auth";
+import type { Dictionary } from "@/lib/i18n/format";
 import type {
     OrganizationMembershipResponse,
     UserResponse,
 } from "@saas/shared-types";
 
+/**
+ * Nav entries carry a DICTIONARY KEY, not a label: the label is resolved at
+ * render time so the same table serves every locale.
+ */
 const mainNavItems = [
-    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { title: "Team", href: "/dashboard/team", icon: Users },
-    { title: "Settings", href: "/dashboard/settings", icon: Settings },
-];
+    { titleKey: "dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { titleKey: "team", href: "/dashboard/team", icon: Users },
+    { titleKey: "settings", href: "/dashboard/settings", icon: Settings },
+] as const;
 
 const orgNavItems = [
-    { title: "Organization", href: "/dashboard/organization", icon: Building2 },
-    { title: "Billing", href: "/dashboard/billing", icon: CreditCard },
-];
+    { titleKey: "organization", href: "/dashboard/organization", icon: Building2 },
+    { titleKey: "billing", href: "/dashboard/billing", icon: CreditCard },
+] as const;
 
 /**
  * Sidebar.
@@ -64,11 +69,14 @@ export function AppSidebar({
     user,
     organizations,
     activeOrganization,
+    dict,
 }: {
     user: UserResponse | null;
     organizations: OrganizationMembershipResponse[];
     activeOrganization: OrganizationMembershipResponse | null;
+    dict: Dictionary;
 }) {
+    const t = dict.dashboard.nav;
     const pathname = usePathname();
     const [isPending, startTransition] = useTransition();
     const { isMobile, state } = useSidebar();
@@ -95,7 +103,7 @@ export function AppSidebar({
                                     <Home className="size-4" />
                                 </div>
                                 <div className="grid flex-1 text-left text-sm leading-tight">
-                                    <span className="truncate font-semibold">SaaS Template</span>
+                                    <span className="truncate font-semibold">{dict.common.appName}</span>
                                     <span className="truncate text-xs text-muted-foreground">
                                         {activeOrganization?.name || "Personal"}
                                     </span>
@@ -122,13 +130,14 @@ export function AppSidebar({
                         collapsed={isCollapsed}
                         organizations={organizations}
                         activeOrganization={activeOrganization}
+                        dict={dict}
                     />
                 </div>
             </SidebarHeader>
 
             <SidebarContent>
                 <SidebarGroup>
-                    <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+                    <SidebarGroupLabel>{t.navigation}</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu>
                             {mainNavItems.map((item) => (
@@ -139,7 +148,7 @@ export function AppSidebar({
                                     >
                                         <Link href={item.href}>
                                             <item.icon className="size-4" />
-                                            <span>{item.title}</span>
+                                            <span>{t[item.titleKey]}</span>
                                         </Link>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
@@ -149,7 +158,7 @@ export function AppSidebar({
                 </SidebarGroup>
 
                 <SidebarGroup>
-                    <SidebarGroupLabel>Organization</SidebarGroupLabel>
+                    <SidebarGroupLabel>{t.organization}</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu>
                             {orgNavItems.map((item) => (
@@ -160,7 +169,7 @@ export function AppSidebar({
                                     >
                                         <Link href={item.href}>
                                             <item.icon className="size-4" />
-                                            <span>{item.title}</span>
+                                            <span>{t[item.titleKey]}</span>
                                         </Link>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
@@ -208,7 +217,7 @@ export function AppSidebar({
                                 <DropdownMenuItem asChild>
                                     <Link href="/dashboard/settings">
                                         <Settings className="mr-2 size-4" />
-                                        Settings
+                                        {dict.dashboard.userMenu.settings}
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
@@ -228,7 +237,7 @@ export function AppSidebar({
                                     {isPending ? (
                                         <Loader2 className="mr-2 size-4 animate-spin" />
                                     ) : null}
-                                    Log out
+                                    {dict.dashboard.userMenu.logOut}
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>

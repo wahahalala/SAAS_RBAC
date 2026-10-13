@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProfileForm } from "@/components/dashboard/profile-form";
 import { AccountActions } from "@/components/dashboard/account-actions";
 import { getTenantContext } from "@/lib/server/tenant";
+import { getDictionary } from "@/lib/i18n";
 
 /**
  * Settings page.
@@ -20,7 +21,11 @@ import { getTenantContext } from "@/lib/server/tenant";
  * empty-then-populated flash. The two interactive pieces are Client Components.
  */
 export default async function SettingsPage() {
-    const { user } = await getTenantContext("/dashboard/settings");
+    const [{ user }, dict] = await Promise.all([
+        getTenantContext("/dashboard/settings"),
+        getDictionary(),
+    ]);
+    const t = dict.dashboard.settings;
 
     const getInitials = (name: string | null) => {
         if (!name) return "U";
@@ -35,25 +40,23 @@ export default async function SettingsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-                <p className="text-muted-foreground">
-                    Manage your account settings and preferences.
-                </p>
+                <h1 className="text-3xl font-bold tracking-tight">{t.title}</h1>
+                <p className="text-muted-foreground">{t.subtitle}</p>
             </div>
 
             <Tabs defaultValue="profile" className="space-y-6">
                 <TabsList>
-                    <TabsTrigger value="profile">Profile</TabsTrigger>
-                    <TabsTrigger value="account">Account</TabsTrigger>
-                    <TabsTrigger value="notifications">Notifications</TabsTrigger>
+                    <TabsTrigger value="profile">{t.tabProfile}</TabsTrigger>
+                    <TabsTrigger value="account">{t.tabAccount}</TabsTrigger>
+                    <TabsTrigger value="notifications">{t.tabNotifications}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="profile" className="space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Profile Information</CardTitle>
+                            <CardTitle>{t.profileInformation}</CardTitle>
                             <CardDescription>
-                                Update your personal information.
+                                {t.profileInformationDescription}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
@@ -69,14 +72,14 @@ export default async function SettingsPage() {
                                 </Avatar>
                                 <div>
                                     <p className="text-sm text-muted-foreground">
-                                        Avatar upload is not enabled yet.
+                                        {t.avatarNotEnabled}
                                     </p>
                                 </div>
                             </div>
 
                             <Separator />
 
-                            <ProfileForm user={user} />
+                            <ProfileForm user={user} dict={dict} />
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -84,19 +87,19 @@ export default async function SettingsPage() {
                 <TabsContent value="account" className="space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Account Security</CardTitle>
+                            <CardTitle>{t.accountSecurity}</CardTitle>
                             <CardDescription>
-                                Manage your account security settings.
+                                {t.accountSecurityDescription}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="font-medium">Email verified</p>
+                                    <p className="font-medium">{t.emailVerified}</p>
                                     <p className="text-sm text-muted-foreground">
                                         {user.emailVerified
-                                            ? "Your email is verified"
-                                            : "Please verify your email"}
+                                            ? t.emailVerifiedTrue
+                                            : t.emailVerifiedFalse}
                                     </p>
                                 </div>
                                 <span
@@ -106,19 +109,19 @@ export default async function SettingsPage() {
                                             : "bg-destructive/10 text-destructive"
                                     }`}
                                 >
-                                    {user.emailVerified ? "Verified" : "Unverified"}
+                                    {user.emailVerified ? t.verified : t.unverified}
                                 </span>
                             </div>
                             <Separator />
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="font-medium">Password</p>
+                                    <p className="font-medium">{t.password}</p>
                                     <p className="text-sm text-muted-foreground">
-                                        Change your password
+                                        {t.changePassword}
                                     </p>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Not available yet
+                                    {dict.common.notAvailableYet}
                                 </p>
                             </div>
                         </CardContent>
@@ -127,14 +130,14 @@ export default async function SettingsPage() {
                     <Card className="border-destructive">
                         <CardHeader>
                             <CardTitle className="text-destructive">
-                                Danger Zone
+                                {t.dangerZone}
                             </CardTitle>
                             <CardDescription>
-                                Irreversible actions for your account.
+                                {t.dangerZoneDescription}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <AccountActions />
+                            <AccountActions dict={dict} />
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -142,14 +145,14 @@ export default async function SettingsPage() {
                 <TabsContent value="notifications" className="space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Notification Preferences</CardTitle>
+                            <CardTitle>{t.notificationPreferences}</CardTitle>
                             <CardDescription>
-                                Choose how you want to be notified.
+                                {t.notificationPreferencesDescription}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <p className="text-muted-foreground">
-                                Notification settings coming soon.
+                                {t.notificationsComingSoon}
                             </p>
                         </CardContent>
                     </Card>

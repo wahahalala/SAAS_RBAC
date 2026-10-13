@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Users, Building2, Activity } from "lucide-react";
 import { getTenantContext } from "@/lib/server/tenant";
+import { getDictionary, interpolate } from "@/lib/i18n";
 import { SwitchTenantButton } from "@/components/dashboard/switch-tenant-button";
 
 /**
@@ -16,27 +17,29 @@ import { SwitchTenantButton } from "@/components/dashboard/switch-tenant-button"
  * Client Component, so the page itself stays server-rendered.
  */
 export default async function DashboardPage() {
-    const { user, organizations, activeOrganization } = await getTenantContext(
-        "/dashboard",
-    );
+    const [{ user, organizations, activeOrganization }, dict] = await Promise.all([
+        getTenantContext("/dashboard"),
+        getDictionary(),
+    ]);
+    const t = dict.dashboard.overview;
 
     const stats = [
         {
-            title: "Organizations",
+            title: t.organizations,
             value: organizations.length,
-            description: "Active organizations",
+            description: t.organizationsDescription,
             icon: Building2,
         },
         {
-            title: "Team Members",
+            title: t.teamMembers,
             value: organizations.reduce((acc, org) => acc + org.memberCount, 0),
-            description: "Across all organizations",
+            description: t.teamMembersDescription,
             icon: Users,
         },
         {
-            title: "Your Plan",
+            title: t.yourPlan,
             value: activeOrganization?.plan || "Free",
-            description: "Active organization plan",
+            description: t.yourPlanDescription,
             icon: Activity,
         },
     ];
@@ -45,11 +48,11 @@ export default async function DashboardPage() {
         <div className="space-y-8">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">
-                    Welcome back, {user.name?.split(" ")[0] || "there"}!
+                    {interpolate(t.title, {
+                        name: user.name?.split(" ")[0] || "there",
+                    })}
                 </h1>
-                <p className="text-muted-foreground">
-                    Here&apos;s what&apos;s happening with your account today.
-                </p>
+                <p className="text-muted-foreground">{t.subtitle}</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
@@ -74,7 +77,7 @@ export default async function DashboardPage() {
             </div>
 
             <div>
-                <h2 className="text-xl font-semibold mb-4">Your Organizations</h2>
+                <h2 className="text-xl font-semibold mb-4">{t.yourOrganizations}</h2>
 
                 {organizations.length > 0 ? (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -109,8 +112,12 @@ export default async function DashboardPage() {
                                         <CardDescription className="flex items-center gap-4">
                                             <span className="flex items-center gap-1">
                                                 <Users className="h-3 w-3" />
-                                                {org.memberCount} member
-                                                {org.memberCount !== 1 ? "s" : ""}
+                                                {interpolate(
+                                                    org.memberCount === 1
+                                                        ? t.memberCount
+                                                        : t.memberCountPlural,
+                                                    { count: org.memberCount },
+                                                )}
                                             </span>
                                             <span className="capitalize text-xs">
                                                 {org.role}
@@ -121,6 +128,7 @@ export default async function DashboardPage() {
                                         <SwitchTenantButton
                                             tenantId={org.tenantId}
                                             isActive={isActive}
+                                            dict={dict.dashboard.overview}
                                         />
                                     </CardContent>
                                 </Card>
@@ -130,11 +138,8 @@ export default async function DashboardPage() {
                 ) : (
                     <Card>
                         <CardHeader>
-                            <CardTitle>No organizations yet</CardTitle>
-                            <CardDescription>
-                                Create your first organization to get started
-                                with team collaboration.
-                            </CardDescription>
+                            <CardTitle>{t.emptyTitle}</CardTitle>
+                            <CardDescription>{t.emptyDescription}</CardDescription>
                         </CardHeader>
                     </Card>
                 )}

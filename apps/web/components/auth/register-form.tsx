@@ -12,9 +12,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Dictionary } from "@/lib/i18n/format";
 
-
-export function RegisterForm() {
+/**
+ * Client Component (owns form state); the dictionary is passed in from the
+ * Server Component page — see the login form for the same pattern.
+ */
+export function RegisterForm({
+    dict,
+    common,
+}: {
+    dict: Dictionary["auth"]["register"];
+    common: Dictionary["auth"]["login"];
+}) {
+    const t = dict;
     const router = useRouter();
     const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
@@ -61,10 +72,8 @@ export function RegisterForm() {
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1 text-center">
-                    <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-                    <CardDescription>
-                        Get started with your free account today
-                    </CardDescription>
+                    <CardTitle className="text-2xl font-bold">{t.title}</CardTitle>
+                    <CardDescription>{t.description}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {/* OAuth Buttons */}
@@ -110,7 +119,7 @@ export function RegisterForm() {
                         </div>
                         <div className="relative flex justify-center text-xs uppercase">
                             <span className="bg-card px-2 text-muted-foreground">
-                                Or continue with email
+                                {common.orContinueWith}
                             </span>
                         </div>
                     </div>
@@ -124,11 +133,11 @@ export function RegisterForm() {
                         )}
 
                         <div className="space-y-2">
-                            <Label htmlFor="name">Name</Label>
+                            <Label htmlFor="name">{t.name}</Label>
                             <Input
                                 id="name"
                                 type="text"
-                                placeholder="John Doe"
+                                placeholder={t.namePlaceholder}
                                 {...register("name")}
                             />
                             {errors.name && (
@@ -137,7 +146,7 @@ export function RegisterForm() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
+                            <Label htmlFor="email">{t.email}</Label>
                             <Input
                                 id="email"
                                 type="email"
@@ -150,7 +159,7 @@ export function RegisterForm() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password">{t.password}</Label>
                             <Input
                                 id="password"
                                 type="password"
@@ -161,7 +170,7 @@ export function RegisterForm() {
                                 <p className="text-sm text-destructive">{errors.password.message}</p>
                             )}
                             <p className="text-xs text-muted-foreground">
-                                Must be at least 8 characters
+                                {t.passwordHint}
                             </p>
                         </div>
 
@@ -173,29 +182,29 @@ export function RegisterForm() {
                             {isPending && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Create account
+                            {t.submit}
                         </Button>
                     </form>
 
                     <p className="text-xs text-center text-muted-foreground">
-                        By clicking continue, you agree to our{" "}
+                        {t.termsPrefix}{" "}
                         <Link href="/terms" className="underline hover:text-primary">
-                            Terms of Service
+                            {t.terms}
                         </Link>{" "}
-                        and{" "}
+                        {t.termsAnd}{" "}
                         <Link href="/privacy" className="underline hover:text-primary">
-                            Privacy Policy
+                            {t.privacy}
                         </Link>
                     </p>
                 </CardContent>
                 <CardFooter>
                     <p className="text-center text-sm text-muted-foreground w-full">
-                        Already have an account?{" "}
+                        {t.haveAccount}{" "}
                         <Link
                             href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login"}
                             className="text-primary hover:underline font-medium"
                         >
-                            Sign in
+                            {t.signIn}
                         </Link>
                     </p>
                 </CardFooter>

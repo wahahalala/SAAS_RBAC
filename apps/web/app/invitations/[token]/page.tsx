@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { AcceptInvitationButton } from "@/components/invitations/accept-invitation-button";
 import { selfOrigin } from "@/lib/server/origin";
 import { getServerSession } from "@/lib/server/session";
+import { getDictionary, interpolate } from "@/lib/i18n";
 import type { InvitationPreviewResponse } from "@saas/shared-types";
 
 /**
@@ -54,10 +55,12 @@ export default async function InvitationPage({
 }) {
     const { token } = await params;
 
-    const [preview, session] = await Promise.all([
+    const [preview, session, dict] = await Promise.all([
         fetchPreview(token),
         getServerSession(),
+        getDictionary(),
     ]);
+    const t = dict.invitation;
 
     const redirectTarget = encodeURIComponent(`/invitations/${token}`);
     const loginHref = `/login?redirect=${redirectTarget}`;
@@ -68,8 +71,8 @@ export default async function InvitationPage({
             <Shell>
                 <StatusCard
                     icon={<MailX className="h-10 w-10 text-destructive" />}
-                    title="Invitation not found"
-                    description="This invitation link is invalid or has been removed. Ask an administrator to send a new one."
+                    title={t.notFound.title}
+                    description={t.notFound.description}
                 />
             </Shell>
         );
@@ -80,8 +83,10 @@ export default async function InvitationPage({
             <Shell>
                 <StatusCard
                     icon={<Clock className="h-10 w-10 text-muted-foreground" />}
-                    title="Invitation expired"
-                    description={`The invitation to join ${preview.organizationName} expired. Ask an administrator for a new invitation.`}
+                    title={t.expired.title}
+                    description={interpolate(t.expired.description, {
+                        organization: preview.organizationName,
+                    })}
                 />
             </Shell>
         );
@@ -94,8 +99,10 @@ export default async function InvitationPage({
                     icon={
                         <AlertTriangle className="h-10 w-10 text-muted-foreground" />
                     }
-                    title="Invitation revoked"
-                    description={`An administrator revoked this invitation to ${preview.organizationName}.`}
+                    title={t.revoked.title}
+                    description={interpolate(t.revoked.description, {
+                        organization: preview.organizationName,
+                    })}
                 />
             </Shell>
         );
@@ -106,8 +113,10 @@ export default async function InvitationPage({
             <Shell>
                 <StatusCard
                     icon={<CheckCircle2 className="h-10 w-10 text-primary" />}
-                    title="Invitation already accepted"
-                    description={`This invitation to ${preview.organizationName} has already been used.`}
+                    title={t.accepted.title}
+                    description={interpolate(t.accepted.description, {
+                        organization: preview.organizationName,
+                    })}
                 />
             </Shell>
         );
@@ -121,24 +130,28 @@ export default async function InvitationPage({
                         <ShieldCheck className="h-6 w-6 text-primary" />
                     </div>
                     <CardTitle className="text-2xl font-bold">
-                        Join {preview.organizationName}
+                        {interpolate(t.joinTitle, {
+                            organization: preview.organizationName,
+                        })}
                     </CardTitle>
                     <CardDescription>
                         {preview.invitedByName
-                            ? `${preview.invitedByName} invited you to collaborate.`
-                            : "You have been invited to collaborate."}
+                            ? interpolate(t.invitedBy, {
+                                  name: preview.invitedByName,
+                              })
+                            : t.invitedGeneric}
                     </CardDescription>
                 </CardHeader>
 
                 <CardContent className="space-y-5">
                     <div className="space-y-3 rounded-lg border p-4 text-sm">
-                        <Row label="Organization">
+                        <Row label={t.organization}>
                             {preview.organizationName}
                         </Row>
                         <Separator />
-                        <Row label="Invited email">{preview.email}</Row>
+                        <Row label={t.invitedEmail}>{preview.email}</Row>
                         <Separator />
-                        <Row label="Role">
+                        <Row label={t.role}>
                             <Badge
                                 variant={
                                     preview.role === "admin"
@@ -153,28 +166,31 @@ export default async function InvitationPage({
                     </div>
 
                     {session ? (
-                        <AcceptInvitationButton token={token} />
+                        <AcceptInvitationButton token={token} dict={t} />
                     ) : (
                         <div className="space-y-3">
                             <p className="text-sm text-muted-foreground">
                                 {preview.accountExists
-                                    ? "Sign in to accept this invitation."
-                                    : "Create an account to accept this invitation."}
+                                    ? t.signInToAccept
+                                    : t.createAccountToAccept}
                             </p>
                             <Button className="w-full" asChild>
-                                <Link href={loginHref}>Sign in to accept</Link>
+                                <Link href={loginHref}>{t.signInButton}</Link>
                             </Button>
                             <Button variant="outline" className="w-full" asChild>
                                 <Link href={registerHref}>
-                                    Create an account
+                                    {t.createAccountButton}
                                 </Link>
                             </Button>
                         </div>
                     )}
 
                     <p className="text-center text-xs text-muted-foreground">
-                        Invitation expires{" "}
-                        {new Date(preview.expiresAt).toLocaleDateString()}
+                        {interpolate(t.expires, {
+                            date: new Date(
+                                preview.expiresAt,
+                            ).toLocaleDateString(),
+                        })}
                     </p>
                 </CardContent>
             </Card>

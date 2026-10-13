@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { removeMemberAction, updateMemberRoleAction } from "@/app/actions/tenant";
 import type { MemberResponse } from "@saas/shared-types";
+import { interpolate, type Dictionary } from "@/lib/i18n/format";
 
 /**
  * One row of the team list plus its actions.
@@ -41,7 +42,14 @@ import type { MemberResponse } from "@saas/shared-types";
  * Action, so the mutations and their revalidation stay on the server. The member
  * data itself is a prop — the list is fetched by the Server Component page.
  */
-export function MemberRow({ member }: { member: MemberResponse }) {
+export function MemberRow({
+    member,
+    dict,
+}: {
+    member: MemberResponse;
+    dict: Dictionary;
+}) {
+    const t = dict.dashboard.team;
     const [isPending, startTransition] = useTransition();
     const [isRemoveOpen, setIsRemoveOpen] = useState(false);
 
@@ -64,7 +72,11 @@ export function MemberRow({ member }: { member: MemberResponse }) {
                 toast.error(result.error);
                 return;
             }
-            toast.success(`Role changed to ${nextRole}`);
+            toast.success(
+                interpolate(t.roleChangedTo, {
+                    role: nextRole === "admin" ? t.roleAdmin : t.roleMember,
+                }),
+            );
         });
     };
 
@@ -75,7 +87,7 @@ export function MemberRow({ member }: { member: MemberResponse }) {
                 toast.error(result.error);
                 return;
             }
-            toast.success("Member removed");
+            toast.success(t.memberRemoved);
             setIsRemoveOpen(false);
         });
     };
@@ -93,12 +105,12 @@ export function MemberRow({ member }: { member: MemberResponse }) {
                     <div>
                         <div className="flex items-center gap-2">
                             <p className="font-medium">
-                                {member.user.name || "Unnamed"}
+                                {member.user.name || t.unnamed}
                             </p>
                             {member.role === "admin" && (
                                 <Badge variant="secondary" className="text-xs">
                                     <Crown className="mr-1 h-3 w-3" />
-                                    Admin
+                                    {t.roleAdmin}
                                 </Badge>
                             )}
                         </div>
@@ -112,7 +124,7 @@ export function MemberRow({ member }: { member: MemberResponse }) {
                     <div className="hidden text-right md:block">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />
-                            Joined{" "}
+                            {t.joined}{" "}
                             {new Date(member.createdAt).toLocaleDateString("en-US", {
                                 month: "short",
                                 day: "numeric",
@@ -129,19 +141,21 @@ export function MemberRow({ member }: { member: MemberResponse }) {
                                 ) : (
                                     <MoreHorizontal className="h-4 w-4" />
                                 )}
-                                <span className="sr-only">Open menu</span>
+                                <span className="sr-only">{t.openMenu}</span>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem asChild>
                                 <a href={`mailto:${member.user.email}`}>
                                     <Mail className="mr-2 h-4 w-4" />
-                                    Send email
+                                    {t.sendEmail}
                                 </a>
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={changeRole}>
                                 <Shield className="mr-2 h-4 w-4" />
-                                Change to {nextRole}
+                                {nextRole === "admin"
+                                    ? t.changeToAdmin
+                                    : t.changeToMember}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -149,7 +163,7 @@ export function MemberRow({ member }: { member: MemberResponse }) {
                                 onClick={() => setIsRemoveOpen(true)}
                             >
                                 <UserMinus className="mr-2 h-4 w-4" />
-                                Remove member
+                                {t.remove}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -159,19 +173,20 @@ export function MemberRow({ member }: { member: MemberResponse }) {
             <AlertDialog open={isRemoveOpen} onOpenChange={setIsRemoveOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove team member?</AlertDialogTitle>
+                        <AlertDialogTitle>{t.removeMemberTitle}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            {member.user.name || member.user.email} will lose
-                            access to this organization immediately.
+                            {interpolate(t.removeMemberWarning, {
+                                name: member.user.name || member.user.email,
+                            })}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{dict.common.cancel}</AlertDialogCancel>
                         <AlertDialogAction onClick={remove} disabled={isPending}>
                             {isPending && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Remove
+                            {t.remove}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

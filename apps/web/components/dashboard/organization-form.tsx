@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { updateOrganizationAction } from "@/app/actions/tenant";
 import type { OrganizationMembershipResponse } from "@saas/shared-types";
+import type { Dictionary } from "@/lib/i18n/format";
 
 /**
  * Organization settings form.
@@ -26,9 +27,12 @@ import type { OrganizationMembershipResponse } from "@saas/shared-types";
  */
 export function OrganizationForm({
     organization,
+    dict,
 }: {
     organization: OrganizationMembershipResponse;
+    dict: Dictionary;
 }) {
+    const t = dict.dashboard.settings;
     const [isPending, startTransition] = useTransition();
 
     const {
@@ -55,7 +59,7 @@ export function OrganizationForm({
                 toast.error(result.error);
                 return;
             }
-            toast.success("Organization updated successfully");
+            toast.success(t.organizationUpdated);
         });
     };
 
@@ -72,10 +76,10 @@ export function OrganizationForm({
                     <div className="space-y-1">
                         <Button type="button" variant="outline" size="sm" disabled>
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Logo
+                            {t.uploadLogo}
                         </Button>
                         <p className="text-xs text-muted-foreground">
-                            Logo upload is not enabled yet.
+                            {t.logoNotEnabled}
                         </p>
                     </div>
                 </div>
@@ -83,10 +87,10 @@ export function OrganizationForm({
                 <Separator />
 
                 <div className="space-y-2">
-                    <Label htmlFor="name">Organization Name</Label>
+                    <Label htmlFor="name">{t.organizationName}</Label>
                     <Input
                         id="name"
-                        placeholder="Acme Inc."
+                        placeholder={t.organizationNamePlaceholder}
                         {...register("name")}
                     />
                     {errors.name && (
@@ -99,7 +103,7 @@ export function OrganizationForm({
                 {/* Slug is read-only: the API has no slug update route, and a
                     URL identifier that silently changed would break links. */}
                 <div className="space-y-2">
-                    <Label htmlFor="slug">Organization URL</Label>
+                    <Label htmlFor="slug">{t.organizationUrl}</Label>
                     <div className="flex items-center gap-2">
                         <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
                             <Globe className="mr-2 h-4 w-4" />
@@ -114,8 +118,7 @@ export function OrganizationForm({
                         />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        This is your organization&apos;s unique URL identifier and
-                        cannot be changed here.
+                        {t.slugHint}
                     </p>
                 </div>
 
@@ -123,7 +126,7 @@ export function OrganizationForm({
                     {isPending && (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    Save changes
+                    {t.saveChanges}
                 </Button>
             </div>
         </form>

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { OrganizationForm } from "@/components/dashboard/organization-form";
 import { getTenantContext } from "@/lib/server/tenant";
+import { getDictionary } from "@/lib/i18n";
 
 /**
  * Organization page.
@@ -20,20 +21,20 @@ import { getTenantContext } from "@/lib/server/tenant";
  * Client Component, because it needs form state.
  */
 export default async function OrganizationPage() {
-    const { activeOrganization: org } = await getTenantContext(
-        "/dashboard/organization",
-    );
+    const [{ activeOrganization: org }, dict] = await Promise.all([
+        getTenantContext("/dashboard/organization"),
+        getDictionary(),
+    ]);
+    const t = dict.dashboard.organization;
 
     if (!org) {
         return (
             <div className="space-y-8">
-                <h1 className="text-3xl font-bold tracking-tight">Organization</h1>
+                <h1 className="text-3xl font-bold tracking-tight">{t.title}</h1>
                 <Card>
                     <CardHeader>
-                        <CardTitle>No organization yet</CardTitle>
-                        <CardDescription>
-                            Create an organization to manage its settings.
-                        </CardDescription>
+                        <CardTitle>{t.emptyTitle}</CardTitle>
+                        <CardDescription>{t.emptyDescription}</CardDescription>
                     </CardHeader>
                 </Card>
             </div>
@@ -43,23 +44,21 @@ export default async function OrganizationPage() {
     return (
         <div className="space-y-8">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Organization</h1>
-                <p className="text-muted-foreground">
-                    Manage your organization settings and details
-                </p>
+                <h1 className="text-3xl font-bold tracking-tight">{t.title}</h1>
+                <p className="text-muted-foreground">{t.subtitle}</p>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>General Settings</CardTitle>
+                            <CardTitle>{t.generalSettings}</CardTitle>
                             <CardDescription>
-                                Update your organization&apos;s profile information
+                                {t.generalSettingsDescription}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <OrganizationForm organization={org} />
+                            <OrganizationForm organization={org} dict={dict} />
                         </CardContent>
                     </Card>
                 </div>
@@ -68,13 +67,13 @@ export default async function OrganizationPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-base">
-                                Organization Details
+                                {t.details}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">
-                                    Plan
+                                    {t.plan}
                                 </span>
                                 <Badge variant="secondary" className="capitalize">
                                     {org.plan}
@@ -83,7 +82,7 @@ export default async function OrganizationPage() {
                             <Separator />
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">
-                                    Members
+                                    {t.members}
                                 </span>
                                 <span className="font-medium">
                                     {org.memberCount}
@@ -92,7 +91,7 @@ export default async function OrganizationPage() {
                             <Separator />
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">
-                                    Your Role
+                                    {t.yourRole}
                                 </span>
                                 <Badge variant="outline" className="capitalize">
                                     <Shield className="mr-1 h-3 w-3" />
@@ -104,7 +103,7 @@ export default async function OrganizationPage() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Quick Links</CardTitle>
+                            <CardTitle className="text-base">{t.quickLinks}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2">
                             <Button
@@ -114,7 +113,7 @@ export default async function OrganizationPage() {
                             >
                                 <a href="/dashboard/team">
                                     <Users className="mr-2 h-4 w-4" />
-                                    Manage team
+                                    {t.manageTeam}
                                 </a>
                             </Button>
                             <Button
@@ -124,7 +123,7 @@ export default async function OrganizationPage() {
                             >
                                 <a href="/dashboard/billing">
                                     <Building2 className="mr-2 h-4 w-4" />
-                                    Billing
+                                    {t.billing}
                                 </a>
                             </Button>
                             <Button
@@ -134,7 +133,7 @@ export default async function OrganizationPage() {
                             >
                                 <a href="/dashboard/settings">
                                     <Network className="mr-2 h-4 w-4" />
-                                    Account settings
+                                    {t.accountSettings}
                                 </a>
                             </Button>
                         </CardContent>

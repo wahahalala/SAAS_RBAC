@@ -12,74 +12,41 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useUiStore } from "@/lib/stores";
+import { interpolate, type Dictionary } from "@/lib/i18n/format";
 
+/**
+ * The plan table carries only what does NOT translate — id, price, icon and the
+ * "popular" flag. Name, description and feature list are looked up from the
+ * dictionary by `id`, so the layout stays here and the copy lives in `en.ts` /
+ * `zh.ts`.
+ */
 const plans = [
-    {
-        id: "free",
-        name: "Free",
-        description: "For individuals and small projects",
-        price: 0,
-        features: [
-            "Up to 3 team members",
-            "5 GB storage",
-            "Basic analytics",
-            "Community support",
-            "API access",
-        ],
-        icon: Zap,
-        popular: false,
-    },
-    {
-        id: "pro",
-        name: "Pro",
-        description: "For growing teams and businesses",
-        price: 29,
-        features: [
-            "Unlimited team members",
-            "100 GB storage",
-            "Advanced analytics",
-            "Priority support",
-            "API access",
-            "Custom branding",
-            "SSO authentication",
-            "Audit logs",
-        ],
-        icon: Sparkles,
-        popular: true,
-    },
-    {
-        id: "enterprise",
-        name: "Enterprise",
-        description: "For large organizations",
-        price: 99,
-        features: [
-            "Everything in Pro",
-            "Unlimited storage",
-            "Dedicated support",
-            "Custom integrations",
-            "SLA guarantee",
-            "On-premise option",
-            "Advanced security",
-            "Custom contracts",
-        ],
-        icon: Building2,
-        popular: false,
-    },
-];
+    { id: "free", price: 0, icon: Zap, popular: false },
+    { id: "pro", price: 29, icon: Sparkles, popular: true },
+    { id: "enterprise", price: 99, icon: Building2, popular: false },
+] as const;
 
 /**
  * Pricing cards.
  *
  * Client-side because the displayed price depends on the monthly/yearly toggle —
- * UI state held in Zustand. `currentPlan` is passed down from the Server
- * Component, which fetched the organization.
+ * UI state held in Zustand. `currentPlan` and the dictionary are passed down from
+ * the Server Component.
  */
-export function PricingCards({ currentPlan }: { currentPlan: string }) {
+export function PricingCards({
+    currentPlan,
+    dict,
+}: {
+    currentPlan: string;
+    dict: Dictionary;
+}) {
     const billingCycle = useUiStore((state) => state.billingCycle);
+    const t = dict.dashboard.billing.pricing;
 
     return (
         <div className="grid gap-6 md:grid-cols-3">
             {plans.map((plan) => {
+                const copy = t[plan.id];
                 const isCurrentPlan = plan.id === currentPlan;
                 const yearlyPrice = Math.round(plan.price * 0.8 * 12);
                 const displayPrice =
@@ -98,7 +65,7 @@ export function PricingCards({ currentPlan }: { currentPlan: string }) {
                     >
                         {plan.popular && (
                             <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                                <Badge className="bg-primary">Most Popular</Badge>
+                                <Badge className="bg-primary">{t.popular}</Badge>
                             </div>
                         )}
                         <CardHeader>
@@ -116,9 +83,9 @@ export function PricingCards({ currentPlan }: { currentPlan: string }) {
                                         }`}
                                     />
                                 </div>
-                                <CardTitle>{plan.name}</CardTitle>
+                                <CardTitle>{copy.name}</CardTitle>
                             </div>
-                            <CardDescription>{plan.description}</CardDescription>
+                            <CardDescription>{copy.description}</CardDescription>
                         </CardHeader>
                         <CardContent className="flex-1">
                             <div className="mb-6">
@@ -128,18 +95,20 @@ export function PricingCards({ currentPlan }: { currentPlan: string }) {
                                     </span>
                                     {plan.price > 0 && (
                                         <span className="text-muted-foreground">
-                                            /month
+                                            {t.perMonth}
                                         </span>
                                     )}
                                 </div>
                                 {billingCycle === "yearly" && plan.price > 0 && (
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        ${yearlyPrice} billed yearly
+                                        {interpolate(t.billedYearly, {
+                                            amount: yearlyPrice,
+                                        })}
                                     </p>
                                 )}
                             </div>
                             <ul className="space-y-3">
-                                {plan.features.map((feature) => (
+                                {copy.features.map((feature) => (
                                     <li
                                         key={feature}
                                         className="flex items-start gap-3"
@@ -163,8 +132,8 @@ export function PricingCards({ currentPlan }: { currentPlan: string }) {
                                 disabled={isCurrentPlan}
                             >
                                 {isCurrentPlan
-                                    ? "Current Plan"
-                                    : `Upgrade to ${plan.name}`}
+                                    ? t.currentPlan
+                                    : interpolate(t.upgradeTo, { plan: copy.name })}
                             </Button>
                         </CardFooter>
                     </Card>

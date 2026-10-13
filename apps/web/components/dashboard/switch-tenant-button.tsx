@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { switchTenantAction } from "@/app/actions/tenant";
+import type { Dictionary } from "@/lib/i18n/format";
 
 /**
  * Switch the active organization.
@@ -12,20 +13,25 @@ import { switchTenantAction } from "@/app/actions/tenant";
  * it runs the Server Action that sets the tenant cookie and revalidates, so the
  * server re-renders every scoped page. Keeping it a separate component is what
  * lets the page itself stay a Server Component.
+ *
+ * The two labels it renders come in as a prop rather than being hardcoded, so
+ * the button follows the active language without becoming a translation owner.
  */
 export function SwitchTenantButton({
     tenantId,
     isActive,
+    dict,
 }: {
     tenantId: string;
     isActive: boolean;
+    dict: Dictionary["dashboard"]["overview"];
 }) {
     const [isPending, startTransition] = useTransition();
 
     if (isActive) {
         return (
             <span className="text-sm text-muted-foreground">
-                Active tenant
+                {dict.activeTenant}
             </span>
         );
     }
@@ -43,7 +49,7 @@ export function SwitchTenantButton({
             className="text-sm text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
         >
             {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-            Switch to this organization
+            {dict.switchTo}
             <ArrowUpRight className="h-3 w-3" />
         </button>
     );

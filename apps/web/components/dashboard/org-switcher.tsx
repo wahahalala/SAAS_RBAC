@@ -29,12 +29,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { switchTenantAction, createOrganizationAction } from "@/app/actions/tenant";
+import type { Dictionary } from "@/lib/i18n/format";
 import type { OrganizationMembershipResponse } from "@saas/shared-types";
 
 interface OrgSwitcherProps {
     collapsed?: boolean;
     organizations: OrganizationMembershipResponse[];
     activeOrganization: OrganizationMembershipResponse | null;
+    dict: Dictionary;
 }
 
 /**
@@ -50,7 +52,9 @@ export function OrgSwitcher({
     collapsed = false,
     organizations,
     activeOrganization,
+    dict,
 }: OrgSwitcherProps) {
+    const t = dict.dashboard.orgSwitcher;
     const [isPending, startTransition] = useTransition();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [newOrgName, setNewOrgName] = useState("");
@@ -110,7 +114,7 @@ export function OrgSwitcher({
                             </Avatar>
                             {!collapsed && (
                                 <span className="truncate font-medium">
-                                    {selectedOrg?.name || "Select organization"}
+                                    {selectedOrg?.name || t.selectOrganization}
                                 </span>
                             )}
                         </div>
@@ -118,7 +122,7 @@ export function OrgSwitcher({
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                    <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+                    <DropdownMenuLabel>{t.organizations}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {organizations.length > 0 ? (
                         organizations.map((org) => (
@@ -148,13 +152,13 @@ export function OrgSwitcher({
                     ) : (
                         <div className="px-2 py-4 text-center text-sm text-muted-foreground">
                             <Building2 className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                            No organizations yet
+                            {t.noOrganizations}
                         </div>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setIsCreateOpen(true)}>
                         <Plus className="mr-2 h-4 w-4" />
-                        Create Organization
+                        {t.createOrganization}
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -163,17 +167,17 @@ export function OrgSwitcher({
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Create Organization</DialogTitle>
+                        <DialogTitle>{t.createOrganization}</DialogTitle>
                         <DialogDescription>
-                            Create a new organization to collaborate with your team
+                            {t.createOrganizationDescription}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="org-name">Organization Name</Label>
+                            <Label htmlFor="org-name">{t.organizationName}</Label>
                             <Input
                                 id="org-name"
-                                placeholder="Acme Inc."
+                                placeholder={t.organizationNamePlaceholder}
                                 value={newOrgName}
                                 onChange={(e) => setNewOrgName(e.target.value)}
                                 onKeyDown={(e) => {
@@ -189,7 +193,7 @@ export function OrgSwitcher({
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-                            Cancel
+                            {dict.common.cancel}
                         </Button>
                         <Button
                             onClick={handleCreateOrg}
@@ -198,7 +202,7 @@ export function OrgSwitcher({
                             {isPending && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Create Organization
+                            {t.createOrganization}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

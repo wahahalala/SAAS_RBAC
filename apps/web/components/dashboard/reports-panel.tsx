@@ -22,18 +22,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { ReportResponse, ReportStateName } from "@saas/shared-types";
+import { interpolate, type Dictionary } from "@/lib/i18n/format";
 
-/** Report types and the duration a poll keeps watching after requesting one. */
-const REPORT_TYPES = [
-    { value: "usage", label: "Usage" },
-    { value: "members", label: "Members" },
-    { value: "billing", label: "Billing" },
-] as const;
+/**
+ * Report types are keyed so the label comes from the dictionary; the format
+ * names (CSV/PDF) are proper nouns and stay as-is in every locale.
+ */
+const REPORT_TYPES = ["usage", "members", "billing"] as const;
 
-const FORMATS = [
-    { value: "csv", label: "CSV" },
-    { value: "pdf", label: "PDF" },
-] as const;
+const FORMATS = ["csv", "pdf"] as const;
 
 /**
  * Async report generation panel.
@@ -47,11 +44,18 @@ const FORMATS = [
  * Whether the user may manage reports is decided on the SERVER and passed in:
  * permissions are tenant-scoped and the page already fetched them.
  */
-export function ReportsPanel({ canManage }: { canManage: boolean }) {
+export function ReportsPanel({
+    canManage,
+    dict,
+}: {
+    canManage: boolean;
+    dict: Dictionary;
+}) {
     const queryClient = useQueryClient();
+    const t = dict.dashboard.billing;
 
-    const [type, setType] = useState<(typeof REPORT_TYPES)[number]["value"]>("usage");
-    const [format, setFormat] = useState<(typeof FORMATS)[number]["value"]>("csv");
+    const [type, setType] = useState<(typeof REPORT_TYPES)[number]>("usage");
+    const [format, setFormat] = useState<(typeof FORMATS)[number]>("csv");
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     const reports = useQuery({
@@ -73,16 +77,18 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
         mutationFn: () => requestReport(type, format),
         onSuccess: (report) => {
             if (report.status === "failed") {
-                toast.error(report.error ?? "Could not queue the report");
+                toast.error(report.error ?? t.couldNotQueue);
             } else {
-                toast.success(`${type} report queued`);
+                toast.success(
+                    interpolate(t.reportQueued, { type: t.reportTypes[type] }),
+                );
             }
             queryClient.invalidateQueries({ queryKey: ["reports"] });
         },
         onError: (error: Error) => {
             // A 409 means an identical report is already running - the message
             // from the API explains that, so surface it verbatim.
-            toast.error(error.message || "Could not request the report");
+            toast.error(error.message || t.couldNotRequest);
         },
     });
 
@@ -95,7 +101,7 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
             const response = await fetch(`/api/reports/${report.id}/download`);
             if (!response.ok) {
                 const body = await response.json().catch(() => null);
-                throw new Error(body?.error ?? "Download failed");
+                throw new Error(body?.error ?? t.downloadFailed);
             }
 
             const blob = await response.blob();
@@ -106,7 +112,7 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
             triggerDownload(blob, fileName);
         } catch (error) {
             toast.error(
-                error instanceof Error ? error.message : "Download failed",
+                error instanceof Error ? error.message : t.downloadFailed,
             );
         } finally {
             setDownloadingId(null);
@@ -121,20 +127,17 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
 
     return (
         <div>
-            <h2 className="text-xl font-semibold mb-4">Reports</h2>
+            <h2 className="text-xl font-semibold mb-4">{t.reports}</h2>
             <Card>
                 <CardHeader>
-                    <CardTitle>Export data</CardTitle>
-                    <CardDescription>
-                        Reports are generated in the background. You can leave
-                        this page; the list updates automatically.
-                    </CardDescription>
+                    <CardTitle>{t.exportData}</CardTitle>
+                    <CardDescription>{t.exportDataDescription}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="flex flex-wrap items-end gap-3">
                         <div className="space-y-1">
                             <label className="text-sm font-medium" htmlFor="report-type">
-                                Type
+                                {t.typeLabel}
                             </label>
                             <select
                                 id="report-type"
@@ -142,14 +145,14 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
                                 onChange={(event) =>
                                     setType(
                                         event.target
-                                            .value as (typeof REPORT_TYPES)[number]["value"],
+                                            .value as (typeof REPORT_TYPES)[number],
                                     )
                                 }
                                 className="flex h-9 w-[160px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             >
-                                {REPORT_TYPES.map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                        {item.label}
+                                {REPORT_TYPES.map((value) => (
+                                    <option key={value} value={value}>
+                                        {t.reportTypes[value]}
                                     </option>
                                 ))}
                             </select>
@@ -157,22 +160,21 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
 
                         <div className="space-y-1">
                             <label className="text-sm font-medium" htmlFor="report-format">
-                                Format
+                                {t.formatLabel}
                             </label>
                             <select
                                 id="report-format"
                                 value={format}
                                 onChange={(event) =>
                                     setFormat(
-                                        event.target
-                                            .value as (typeof FORMATS)[number]["value"],
+                                        event.target.value as (typeof FORMATS)[number],
                                     )
                                 }
                                 className="flex h-9 w-[120px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             >
-                                {FORMATS.map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                        {item.label}
+                                {FORMATS.map((value) => (
+                                    <option key={value} value={value}>
+                                        {value.toUpperCase()}
                                     </option>
                                 ))}
                             </select>
@@ -185,18 +187,18 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
                             {createReport.isPending && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Generate report
+                            {t.generateReport}
                         </Button>
                     </div>
 
                     {reports.isLoading ? (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading reports...
+                            {t.loadingReports}
                         </div>
                     ) : items.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
-                            No reports yet. Generate one above.
+                            {t.noReports}
                         </p>
                     ) : (
                         <ul className="divide-y rounded-lg border">
@@ -206,6 +208,7 @@ export function ReportsPanel({ canManage }: { canManage: boolean }) {
                                     report={report}
                                     downloading={downloadingId === report.id}
                                     onDownload={() => handleDownload(report)}
+                                    dict={dict}
                                 />
                             ))}
                         </ul>
@@ -220,11 +223,14 @@ function ReportRow({
     report,
     downloading,
     onDownload,
+    dict,
 }: {
     report: ReportResponse;
     downloading: boolean;
     onDownload: () => void;
+    dict: Dictionary;
 }) {
+    const t = dict.dashboard.billing;
     return (
         <li className="flex flex-wrap items-center justify-between gap-3 p-3">
             <div className="flex items-center gap-3">
@@ -235,7 +241,9 @@ function ReportRow({
                 )}
                 <div>
                     <p className="text-sm font-medium capitalize">
-                        {report.type} report
+                        {interpolate(t.reportSuffix, {
+                            type: t.reportTypes[report.type],
+                        })}
                         <span className="ml-2 text-xs uppercase text-muted-foreground">
                             {report.format}
                         </span>
@@ -243,14 +251,16 @@ function ReportRow({
                     <p className="text-xs text-muted-foreground">
                         {new Date(report.createdAt).toLocaleString()}
                         {report.status === "completed" && report.rowCount !== null
-                            ? ` — ${report.rowCount} row(s)`
+                            ? ` — ${interpolate(t.rowCount, {
+                                  count: report.rowCount,
+                              })}`
                             : ""}
                     </p>
                 </div>
             </div>
 
             <div className="flex items-center gap-3">
-                <StatusBadge status={report.status} />
+                <StatusBadge status={report.status} dict={dict} />
 
                 {report.status === "completed" && (
                     <Button
@@ -264,7 +274,7 @@ function ReportRow({
                         ) : (
                             <Download className="h-4 w-4" />
                         )}
-                        <span className="ml-2">Download</span>
+                        <span className="ml-2">{t.download}</span>
                     </Button>
                 )}
             </div>
@@ -276,34 +286,41 @@ function ReportRow({
     );
 }
 
-function StatusBadge({ status }: { status: ReportStateName }) {
+function StatusBadge({
+    status,
+    dict,
+}: {
+    status: ReportStateName;
+    dict: Dictionary;
+}) {
+    const t = dict.dashboard.billing.reportStatus;
     switch (status) {
         case "completed":
             return (
                 <Badge variant="default" className="gap-1">
                     <CheckCircle2 className="h-3 w-3" />
-                    Completed
+                    {t.completed}
                 </Badge>
             );
         case "failed":
             return (
                 <Badge variant="destructive" className="gap-1">
                     <AlertCircle className="h-3 w-3" />
-                    Failed
+                    {t.failed}
                 </Badge>
             );
         case "processing":
             return (
                 <Badge variant="secondary" className="gap-1">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    Processing
+                    {t.processing}
                 </Badge>
             );
         default:
             return (
                 <Badge variant="secondary" className="gap-1">
                     <Clock className="h-3 w-3" />
-                    Pending
+                    {t.pending}
                 </Badge>
             );
     }
