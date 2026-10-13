@@ -191,6 +191,58 @@ export class AuthService {
   }
 
   /**
+   * Mint a fresh access token for an existing session WITHOUT rotating it.
+   *
+   * `refresh()` cannot serve server-side rendering: it revokes the refresh token
+   * and issues a new one, but a Server Component has no way to persist a cookie
+   * (only Actions and Route Handlers can). The rotated token would be lost, and
+   * the next render — presenting the now-revoked token — would be rejected.
+   *
+   * So this endpoint validates the session and returns only an access token,
+   * leaving the refresh token untouched. Rotation still happens the normal way,
+   * from the client, where the new cookie can actually be stored.
+   */
+  async issueSession(refreshToken: string): Promise<AuthResponse> {
+    let payload: JwtPayload;
+    try {
+      payload = this.jwtService.verify<JwtPayload>(refreshToken, {
+        secret:
+          this.configService.get("JWT_REFRESH_SECRET") ||
+          this.configService.get("JWT_SECRET"),
+      });
+    } catch {
+      throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    if (payload.type !== "refresh") {
+      throw new UnauthorizedException("Invalid token type");
+    }
+
+    const tokenHash = this.hashToken(refreshToken);
+    const session = await this.prisma.refreshSession.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+
+    if (!session || session.revokedAt || session.expiresAt < new Date()) {
+      throw new UnauthorizedException("Session expired or invalid");
+    }
+
+    // No rotation and no new session row: the caller keeps the same refresh
+    // token, which is the entire point of this endpoint.
+    return {
+      accessToken: this.signAccessToken(session.user),
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        image: session.user.image,
+        emailVerified: !!session.user.emailVerified,
+      },
+    };
+  }
+
+  /**
    * Logout the current device (revoke a single refresh session by token hash).
    */
   async logout(refreshToken: string, info: SessionInfo = {}): Promise<void> {

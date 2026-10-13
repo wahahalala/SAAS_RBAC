@@ -21,8 +21,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { apiClient } from "@/lib/api-client";
-import { usePermission } from "@/hooks";
 import type { ReportResponse, ReportStateName } from "@saas/shared-types";
 
 /** Report types and the duration a poll keeps watching after requesting one. */
@@ -40,24 +38,25 @@ const FORMATS = [
 /**
  * Async report generation panel.
  *
- * Generation happens in the worker, so the list is polled while anything is
- * still pending/processing; polling stops on its own once nothing is running
- * (React Query's `refetchInterval` returning false), which keeps an idle
- * dashboard quiet.
+ * This is the one place TanStack Query is still the right tool: report
+ * generation is asynchronous, so the client must poll for status changes — that
+ * is "server state on the client", which is exactly its job. Every call goes to
+ * the BFF (`/api/reports`), which attaches the credentials server-side, so the
+ * access token never reaches the browser.
+ *
+ * Whether the user may manage reports is decided on the SERVER and passed in:
+ * permissions are tenant-scoped and the page already fetched them.
  */
-export function ReportsPanel() {
+export function ReportsPanel({ canManage }: { canManage: boolean }) {
     const queryClient = useQueryClient();
-    const { can } = usePermission();
 
     const [type, setType] = useState<(typeof REPORT_TYPES)[number]["value"]>("usage");
     const [format, setFormat] = useState<(typeof FORMATS)[number]["value"]>("csv");
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-    const canManage = can("billing.manage");
-
     const reports = useQuery({
         queryKey: ["reports"],
-        queryFn: () => apiClient.listReports(),
+        queryFn: listReports,
         enabled: canManage,
         // Poll only while something is in flight.
         refetchInterval: (query) => {
@@ -71,7 +70,7 @@ export function ReportsPanel() {
     });
 
     const createReport = useMutation({
-        mutationFn: () => apiClient.createReport({ type, format }),
+        mutationFn: () => requestReport(type, format),
         onSuccess: (report) => {
             if (report.status === "failed") {
                 toast.error(report.error ?? "Could not queue the report");
@@ -90,7 +89,20 @@ export function ReportsPanel() {
     const handleDownload = async (report: ReportResponse) => {
         setDownloadingId(report.id);
         try {
-            const { blob, fileName } = await apiClient.downloadReport(report.id);
+            // The BFF streams the file with the right headers, so a plain link
+            // works — but it must be fetched with credentials and saved, which
+            // is what this does.
+            const response = await fetch(`/api/reports/${report.id}/download`);
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error ?? "Download failed");
+            }
+
+            const blob = await response.blob();
+            const fileName =
+                parseFileName(response.headers.get("content-disposition")) ??
+                `${report.type}-${report.id}`;
+
             triggerDownload(blob, fileName);
         } catch (error) {
             toast.error(
@@ -308,4 +320,43 @@ function triggerDownload(blob: Blob, fileName: string) {
     anchor.remove();
     // Release the object URL once the download has started.
     URL.revokeObjectURL(url);
+}
+
+/**
+ * Report list, via the BFF.
+ *
+ * The browser never talks to the API directly: this same-origin endpoint carries
+ * the credentials on the server.
+ */
+async function listReports(): Promise<ReportResponse[]> {
+    const response = await fetch("/api/reports");
+    if (!response.ok) {
+        throw new Error("Could not load reports");
+    }
+    return response.json();
+}
+
+async function requestReport(
+    type: string,
+    format: string,
+): Promise<ReportResponse> {
+    const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, format }),
+    });
+
+    if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Could not request the report");
+    }
+
+    return response.json();
+}
+
+/** Read `filename="..."` out of a Content-Disposition header. */
+function parseFileName(header: string | null): string | null {
+    if (!header) return null;
+    const match = /filename="?([^"\r\n;]+)"?/.exec(header);
+    return match?.[1] ?? null;
 }

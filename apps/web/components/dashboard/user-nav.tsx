@@ -12,11 +12,18 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAuth, useLogout } from "@/hooks";
+import { useTransition } from "react";
+import { logoutAction } from "@/app/actions/auth";
+import type { UserResponse } from "@saas/shared-types";
 
-export function UserNav() {
-    const { user } = useAuth();
-    const logout = useLogout();
+/**
+ * User menu.
+ *
+ * Interaction only: the user is passed in from the Server Component layout, and
+ * signing out runs a Server Action (which clears the cookie server-side).
+ */
+export function UserNav({ user }: { user: UserResponse | null }) {
+    const [isPending, startTransition] = useTransition();
 
     const getInitials = (name: string | null) => {
         if (!name) return "U";
@@ -62,7 +69,12 @@ export function UserNav() {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                    onClick={() => logout.mutate()}
+                    disabled={isPending}
+                    onClick={() =>
+                        startTransition(() => {
+                            void logoutAction();
+                        })
+                    }
                     className="text-destructive focus:text-destructive"
                 >
                     <LogOut className="mr-2 h-4 w-4" />

@@ -29,7 +29,7 @@ import {
     CommandSeparator,
     CommandShortcut,
 } from "@/components/ui/command";
-import { useLogout } from "@/hooks";
+import { logoutAction } from "@/app/actions/auth";
 
 const navigationItems = [
     { icon: LayoutDashboard, title: "Dashboard", href: "/dashboard", shortcut: "D" },
@@ -49,7 +49,6 @@ export function CommandPalette() {
     const [open, setOpen] = useState(false);
     const router = useRouter();
     const { setTheme, theme } = useTheme();
-    const logout = useLogout();
 
     // Toggle with keyboard shortcut
     useEffect(() => {
@@ -146,7 +145,7 @@ export function CommandPalette() {
                     {/* Account */}
                     <CommandGroup heading="Account">
                         <CommandItem
-                            onSelect={() => runCommand(() => logout.mutate())}
+                            onSelect={() => runCommand(() => logoutAction())}
                             className="text-destructive"
                         >
                             <LogOut className="mr-2 h-4 w-4" />

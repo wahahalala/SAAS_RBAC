@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTransition } from "react";
 import {
     Home,
     Settings,
@@ -10,6 +11,7 @@ import {
     CreditCard,
     LayoutDashboard,
     ChevronUp,
+    Loader2,
 } from "lucide-react";
 import {
     Sidebar,
@@ -30,7 +32,11 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useAuth, useLogout, useCurrentOrganization } from "@/hooks";
+import { logoutAction } from "@/app/actions/auth";
+import type {
+    OrganizationMembershipResponse,
+    UserResponse,
+} from "@saas/shared-types";
 
 const mainNavItems = [
     { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -43,11 +49,25 @@ const orgNavItems = [
     { title: "Billing", href: "/dashboard/billing", icon: CreditCard },
 ];
 
-export function AppSidebar() {
+/**
+ * Sidebar.
+ *
+ * Still a Client Component, but only for INTERACTION: the active link comes from
+ * `usePathname` and the footer holds a menu. The data it renders (user, tenants,
+ * active organization) is passed in from the Server Component layout — this
+ * component no longer fetches anything, which is what removes the loading state
+ * and the extra round trips the old `useAuth`/`useCurrentOrganization` caused.
+ */
+export function AppSidebar({
+    user,
+    activeOrganization,
+}: {
+    user: UserResponse | null;
+    organizations: OrganizationMembershipResponse[];
+    activeOrganization: OrganizationMembershipResponse | null;
+}) {
     const pathname = usePathname();
-    const { user } = useAuth();
-    const logout = useLogout();
-    const { organization: currentOrg } = useCurrentOrganization();
+    const [isPending, startTransition] = useTransition();
 
     const getInitials = (name: string | null) => {
         if (!name) return "U";
@@ -72,7 +92,7 @@ export function AppSidebar() {
                                 <div className="grid flex-1 text-left text-sm leading-tight">
                                     <span className="truncate font-semibold">SaaS Template</span>
                                     <span className="truncate text-xs text-muted-foreground">
-                                        {currentOrg?.name || "Personal"}
+                                        {activeOrganization?.name || "Personal"}
                                     </span>
                                 </div>
                             </Link>
@@ -135,13 +155,18 @@ export function AppSidebar() {
                                     className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                                 >
                                     <Avatar className="h-8 w-8 rounded-lg">
-                                        <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
+                                        <AvatarImage
+                                            src={user?.image || undefined}
+                                            alt={user?.name || ""}
+                                        />
                                         <AvatarFallback className="rounded-lg">
                                             {getInitials(user?.name || null)}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="grid flex-1 text-left text-sm leading-tight">
-                                        <span className="truncate font-semibold">{user?.name || "User"}</span>
+                                        <span className="truncate font-semibold">
+                                            {user?.name || "User"}
+                                        </span>
                                         <span className="truncate text-xs text-muted-foreground">
                                             {user?.email}
                                         </span>
@@ -162,9 +187,20 @@ export function AppSidebar() {
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                    onClick={() => logout.mutate()}
+                                    disabled={isPending}
+                                    // A Server Action, not a client mutation: the
+                                    // cookie clearing and redirect happen on the
+                                    // server, so no token handling on the client.
+                                    onClick={() =>
+                                        startTransition(() => {
+                                            void logoutAction();
+                                        })
+                                    }
                                     className="text-destructive focus:text-destructive"
                                 >
+                                    {isPending ? (
+                                        <Loader2 className="mr-2 size-4 animate-spin" />
+                                    ) : null}
                                     Log out
                                 </DropdownMenuItem>
                             </DropdownMenuContent>

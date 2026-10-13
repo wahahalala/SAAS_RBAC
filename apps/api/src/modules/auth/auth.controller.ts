@@ -101,6 +101,34 @@ export class AuthController {
     }
 
     @Public()
+    @Post("session")
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary:
+            "Mint an access token for an existing session without rotating the refresh token",
+    })
+    @ApiResponse({ status: 200, description: "Access token issued" })
+    @ApiResponse({ status: 401, description: "Session expired or invalid" })
+    async session(
+        @Req() req: Request,
+        @Res({ passthrough: true }) res: Response,
+    ): Promise<AuthResponse> {
+        // Public because the refresh cookie IS the credential here; there is no
+        // access token to present yet. Used by server-side rendering, which
+        // cannot persist a rotated refresh cookie.
+        const refreshToken = req.cookies?.[REFRESH_COOKIE] as string | undefined;
+        if (!refreshToken) {
+            throw new UnauthorizedException("Refresh token cookie missing");
+        }
+
+        const auth = await this.authService.issueSession(refreshToken);
+
+        // Deliberately NOT setting a refresh cookie: the session is unchanged.
+        void res;
+        return this.publicAuthResponse(auth);
+    }
+
+    @Public()
     @Post("logout")
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: "Logout current device (revoke refresh session)" })

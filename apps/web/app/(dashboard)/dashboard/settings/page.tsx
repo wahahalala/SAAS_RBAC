@@ -1,48 +1,26 @@
-"use client";
-
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { updateProfileSchema, type UpdateProfileInput } from "@saas/validation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useAuth, useLogout } from "@/hooks";
-import { apiClient } from "@/lib/api-client";
+import { ProfileForm } from "@/components/dashboard/profile-form";
+import { AccountActions } from "@/components/dashboard/account-actions";
+import { getTenantContext } from "@/lib/server/tenant";
 
-export default function SettingsPage() {
-    const { user } = useAuth();
-    const logout = useLogout();
-    const [isUpdating, setIsUpdating] = useState(false);
-
-    const {
-        register,
-        handleSubmit,
-        formState: { errors },
-    } = useForm<UpdateProfileInput>({
-        resolver: zodResolver(updateProfileSchema),
-        defaultValues: {
-            name: user?.name || "",
-        },
-    });
-
-    const onSubmit = async (data: UpdateProfileInput) => {
-        setIsUpdating(true);
-        try {
-            await apiClient.updateProfile(data);
-            toast.success("Profile updated successfully");
-        } catch (error: any) {
-            toast.error(error.message || "Failed to update profile");
-        } finally {
-            setIsUpdating(false);
-        }
-    };
+/**
+ * Settings page.
+ *
+ * A Server Component: the user is already available from the session, so the
+ * profile form renders with its values filled in — no client fetch, and no
+ * empty-then-populated flash. The two interactive pieces are Client Components.
+ */
+export default async function SettingsPage() {
+    const { user } = await getTenantContext("/dashboard/settings");
 
     const getInitials = (name: string | null) => {
         if (!name) return "U";
@@ -81,45 +59,24 @@ export default function SettingsPage() {
                         <CardContent className="space-y-6">
                             <div className="flex items-center gap-4">
                                 <Avatar className="h-20 w-20">
-                                    <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
+                                    <AvatarImage
+                                        src={user.image || undefined}
+                                        alt={user.name || ""}
+                                    />
                                     <AvatarFallback className="text-lg">
-                                        {getInitials(user?.name || null)}
+                                        {getInitials(user.name)}
                                     </AvatarFallback>
                                 </Avatar>
                                 <div>
-                                    <Button variant="outline" size="sm">
-                                        Change avatar
-                                    </Button>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        JPG, PNG or GIF. Max 1MB.
+                                    <p className="text-sm text-muted-foreground">
+                                        Avatar upload is not enabled yet.
                                     </p>
                                 </div>
                             </div>
 
                             <Separator />
 
-                            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="name">Name</Label>
-                                        <Input id="name" {...register("name")} />
-                                        {errors.name && (
-                                            <p className="text-sm text-destructive">{errors.name.message}</p>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="email">Email</Label>
-                                        <Input id="email" value={user?.email || ""} disabled />
-                                        <p className="text-xs text-muted-foreground">
-                                            Email cannot be changed.
-                                        </p>
-                                    </div>
-                                </div>
-                                <Button type="submit" disabled={isUpdating}>
-                                    {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Save changes
-                                </Button>
-                            </form>
+                            <ProfileForm user={user} />
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -137,12 +94,20 @@ export default function SettingsPage() {
                                 <div>
                                     <p className="font-medium">Email verified</p>
                                     <p className="text-sm text-muted-foreground">
-                                        {user?.emailVerified ? "Your email is verified" : "Please verify your email"}
+                                        {user.emailVerified
+                                            ? "Your email is verified"
+                                            : "Please verify your email"}
                                     </p>
                                 </div>
-                                <Badge variant={user?.emailVerified ? "default" : "destructive"}>
-                                    {user?.emailVerified ? "Verified" : "Unverified"}
-                                </Badge>
+                                <span
+                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                        user.emailVerified
+                                            ? "bg-primary/10 text-primary"
+                                            : "bg-destructive/10 text-destructive"
+                                    }`}
+                                >
+                                    {user.emailVerified ? "Verified" : "Unverified"}
+                                </span>
                             </div>
                             <Separator />
                             <div className="flex items-center justify-between">
@@ -152,40 +117,24 @@ export default function SettingsPage() {
                                         Change your password
                                     </p>
                                 </div>
-                                <Button variant="outline">Change password</Button>
+                                <p className="text-xs text-muted-foreground">
+                                    Not available yet
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card className="border-destructive">
                         <CardHeader>
-                            <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                            <CardTitle className="text-destructive">
+                                Danger Zone
+                            </CardTitle>
                             <CardDescription>
                                 Irreversible actions for your account.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="font-medium">Sign out</p>
-                                    <p className="text-sm text-muted-foreground">
-                                        Sign out from this device
-                                    </p>
-                                </div>
-                                <Button variant="outline" onClick={() => logout.mutate()}>
-                                    Sign out
-                                </Button>
-                            </div>
-                            <Separator />
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="font-medium">Delete account</p>
-                                    <p className="text-sm text-muted-foreground">
-                                        Permanently delete your account and all data
-                                    </p>
-                                </div>
-                                <Button variant="destructive">Delete account</Button>
-                            </div>
+                        <CardContent>
+                            <AccountActions />
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -207,18 +156,5 @@ export default function SettingsPage() {
                 </TabsContent>
             </Tabs>
         </div>
-    );
-}
-
-function Badge({ variant, children }: { variant: "default" | "destructive"; children: React.ReactNode }) {
-    return (
-        <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${variant === "destructive"
-                    ? "bg-destructive/10 text-destructive"
-                    : "bg-primary/10 text-primary"
-                }`}
-        >
-            {children}
-        </span>
     );
 }

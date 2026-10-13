@@ -1,14 +1,8 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     AlertTriangle,
     CheckCircle2,
     Clock,
-    Loader2,
     MailX,
     ShieldCheck,
 } from "lucide-react";
@@ -22,71 +16,54 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { apiClient } from "@/lib/api-client";
-import { useAuthStore } from "@/lib/stores";
-import { useSessionBootstrap } from "@/hooks";
+import { AcceptInvitationButton } from "@/components/invitations/accept-invitation-button";
+import { selfOrigin } from "@/lib/server/origin";
+import { getServerSession } from "@/lib/server/session";
+import type { InvitationPreviewResponse } from "@saas/shared-types";
 
 /**
  * Invitation accept page.
  *
- * Flow: the invited user follows the emailed link, sees who invited them and to
- * what, signs in (or creates an account) if needed, then accepts - which
- * creates their Membership. Acceptance requires the token only; the signed-in
- * email is deliberately not required to match the invited address.
+ * A Server Component: the preview is fetched during the render, so the page shows
+ * who invited them on first paint. It is a PUBLIC route, so the fetch carries no
+ * credentials (the token in the URL is the credential) — the "accept" button is
+ * the only part that needs a session, and it is a Client Component calling a
+ * Server Action.
  */
-export default function InvitationPage() {
-    const params = useParams<{ token: string }>();
-    const token = params?.token ?? "";
-    const router = useRouter();
-    const queryClient = useQueryClient();
 
-    const { isAuthenticated, isLoading: isAuthLoading } = useAuthStore();
-    const [acceptError, setAcceptError] = useState<string | null>(null);
+/** Preview endpoint is public, so no auth header is sent. */
+async function fetchPreview(
+    token: string,
+): Promise<InvitationPreviewResponse | null> {
+    try {
+        const response = await fetch(
+            `${selfOrigin()}/api/v1/invitations/${token}`,
+            { cache: "no-store" },
+        );
+        if (!response.ok) return null;
+        return (await response.json()) as InvitationPreviewResponse;
+    } catch {
+        return null;
+    }
+}
 
-    // Restore the session from the refresh cookie, same as the dashboard does.
-    useSessionBootstrap();
+export default async function InvitationPage({
+    params,
+}: {
+    params: Promise<{ token: string }>;
+}) {
+    const { token } = await params;
 
-    const preview = useQuery({
-        queryKey: ["invitation", token],
-        queryFn: () => apiClient.getInvitation(token),
-        enabled: Boolean(token),
-        retry: false,
-    });
-
-    const accept = useMutation({
-        mutationFn: () => apiClient.acceptInvitation(token),
-        onSuccess: (result) => {
-            // The new membership changes the user's tenant list; without this
-            // the dashboard would keep showing the pre-invitation state.
-            queryClient.invalidateQueries({ queryKey: ["organizations"] });
-            queryClient.invalidateQueries({ queryKey: ["permissions"] });
-            router.push(
-                `/dashboard?joined=${encodeURIComponent(result.organizationSlug)}`,
-            );
-        },
-        onError: (error: Error) => {
-            setAcceptError(error.message || "Could not accept the invitation");
-        },
-    });
-
-    // Clear a stale error whenever the auth state changes (after signing in).
-    useEffect(() => {
-        setAcceptError(null);
-    }, [isAuthenticated]);
+    const [preview, session] = await Promise.all([
+        fetchPreview(token),
+        getServerSession(),
+    ]);
 
     const redirectTarget = encodeURIComponent(`/invitations/${token}`);
     const loginHref = `/login?redirect=${redirectTarget}`;
     const registerHref = `/register?redirect=${redirectTarget}`;
 
-    if (preview.isLoading || isAuthLoading) {
-        return (
-            <Shell>
-                <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-            </Shell>
-        );
-    }
-
-    if (preview.isError || !preview.data) {
+    if (!preview) {
         return (
             <Shell>
                 <StatusCard
@@ -98,21 +75,19 @@ export default function InvitationPage() {
         );
     }
 
-    const invitation = preview.data;
-
-    if (invitation.status === "expired") {
+    if (preview.status === "expired") {
         return (
             <Shell>
                 <StatusCard
                     icon={<Clock className="h-10 w-10 text-muted-foreground" />}
                     title="Invitation expired"
-                    description={`The invitation to join ${invitation.organizationName} expired. Ask an administrator for a new invitation.`}
+                    description={`The invitation to join ${preview.organizationName} expired. Ask an administrator for a new invitation.`}
                 />
             </Shell>
         );
     }
 
-    if (invitation.status === "canceled") {
+    if (preview.status === "canceled") {
         return (
             <Shell>
                 <StatusCard
@@ -120,19 +95,19 @@ export default function InvitationPage() {
                         <AlertTriangle className="h-10 w-10 text-muted-foreground" />
                     }
                     title="Invitation revoked"
-                    description={`An administrator revoked this invitation to ${invitation.organizationName}.`}
+                    description={`An administrator revoked this invitation to ${preview.organizationName}.`}
                 />
             </Shell>
         );
     }
 
-    if (invitation.status === "accepted") {
+    if (preview.status === "accepted") {
         return (
             <Shell>
                 <StatusCard
                     icon={<CheckCircle2 className="h-10 w-10 text-primary" />}
                     title="Invitation already accepted"
-                    description={`This invitation to ${invitation.organizationName} has already been used.`}
+                    description={`This invitation to ${preview.organizationName} has already been used.`}
                 />
             </Shell>
         );
@@ -146,11 +121,11 @@ export default function InvitationPage() {
                         <ShieldCheck className="h-6 w-6 text-primary" />
                     </div>
                     <CardTitle className="text-2xl font-bold">
-                        Join {invitation.organizationName}
+                        Join {preview.organizationName}
                     </CardTitle>
                     <CardDescription>
-                        {invitation.invitedByName
-                            ? `${invitation.invitedByName} invited you to collaborate.`
+                        {preview.invitedByName
+                            ? `${preview.invitedByName} invited you to collaborate.`
                             : "You have been invited to collaborate."}
                     </CardDescription>
                 </CardHeader>
@@ -158,46 +133,31 @@ export default function InvitationPage() {
                 <CardContent className="space-y-5">
                     <div className="space-y-3 rounded-lg border p-4 text-sm">
                         <Row label="Organization">
-                            {invitation.organizationName}
+                            {preview.organizationName}
                         </Row>
                         <Separator />
-                        <Row label="Invited email">{invitation.email}</Row>
+                        <Row label="Invited email">{preview.email}</Row>
                         <Separator />
                         <Row label="Role">
                             <Badge
                                 variant={
-                                    invitation.role === "admin"
+                                    preview.role === "admin"
                                         ? "default"
                                         : "secondary"
                                 }
                                 className="capitalize"
                             >
-                                {invitation.role}
+                                {preview.role}
                             </Badge>
                         </Row>
                     </div>
 
-                    {acceptError && (
-                        <p className="text-sm text-destructive">{acceptError}</p>
-                    )}
-
-                    {isAuthenticated ? (
-                        <Button
-                            className="w-full"
-                            onClick={() => accept.mutate()}
-                            disabled={accept.isPending}
-                        >
-                            {accept.isPending ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <CheckCircle2 className="mr-2 h-4 w-4" />
-                            )}
-                            Accept invitation
-                        </Button>
+                    {session ? (
+                        <AcceptInvitationButton token={token} />
                     ) : (
                         <div className="space-y-3">
                             <p className="text-sm text-muted-foreground">
-                                {invitation.accountExists
+                                {preview.accountExists
                                     ? "Sign in to accept this invitation."
                                     : "Create an account to accept this invitation."}
                             </p>
@@ -214,7 +174,7 @@ export default function InvitationPage() {
 
                     <p className="text-center text-xs text-muted-foreground">
                         Invitation expires{" "}
-                        {new Date(invitation.expiresAt).toLocaleDateString()}
+                        {new Date(preview.expiresAt).toLocaleDateString()}
                     </p>
                 </CardContent>
             </Card>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
     Check,
     ChevronsUpDown,
@@ -28,25 +28,36 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActiveTenant, useCreateOrganization } from "@/hooks";
+import { switchTenantAction, createOrganizationAction } from "@/app/actions/tenant";
+import type { OrganizationMembershipResponse } from "@saas/shared-types";
 
 interface OrgSwitcherProps {
     collapsed?: boolean;
+    organizations: OrganizationMembershipResponse[];
+    activeOrganization: OrganizationMembershipResponse | null;
 }
 
-export function OrgSwitcher({ collapsed = false }: OrgSwitcherProps) {
-    const createOrg = useCreateOrganization();
-    const {
-        organizations,
-        activeTenantId,
-        activeOrganization,
-        isLoading,
-        setActiveTenant,
-    } = useActiveTenant();
+/**
+ * Organization switcher.
+ *
+ * The tenant list and the active tenant arrive as props from the Server
+ * Component layout. Switching or creating runs a Server Action, which writes the
+ * tenant cookie and revalidates — the server then re-renders every page with the
+ * new scope. Nothing here reads or writes storage, so there is no client/server
+ * disagreement about which tenant is active.
+ */
+export function OrgSwitcher({
+    collapsed = false,
+    organizations,
+    activeOrganization,
+}: OrgSwitcherProps) {
+    const [isPending, startTransition] = useTransition();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [newOrgName, setNewOrgName] = useState("");
+    const [error, setError] = useState<string | null>(null);
 
     const selectedOrg = activeOrganization;
+    const activeTenantId = activeOrganization?.tenantId ?? null;
 
     const getInitials = (name: string) => {
         return name
@@ -57,26 +68,30 @@ export function OrgSwitcher({ collapsed = false }: OrgSwitcherProps) {
             .slice(0, 2);
     };
 
-    const handleCreateOrg = async () => {
+    const handleCreateOrg = () => {
         if (!newOrgName.trim()) return;
+        setError(null);
 
-        try {
-            await createOrg.mutateAsync({ name: newOrgName });
+        startTransition(async () => {
+            const result = await createOrganizationAction({ name: newOrgName });
+            if (result.error) {
+                // Surfaced inline: the API's message ("slug already exists")
+                // is more useful than a generic failure toast.
+                setError(result.error);
+                return;
+            }
             setIsCreateOpen(false);
             setNewOrgName("");
-        } catch {
-            // Error handled by mutation
-        }
+        });
     };
 
-    if (isLoading) {
-        return (
-            <Button variant="outline" className="w-full justify-start" disabled>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {!collapsed && <span className="ml-2">Loading...</span>}
-            </Button>
-        );
-    }
+    const handleSwitch = (tenantId: string) => {
+        if (tenantId === activeTenantId) return;
+        startTransition(async () => {
+            const result = await switchTenantAction(tenantId);
+            if (result.error) setError(result.error);
+        });
+    };
 
     return (
         <>
@@ -105,11 +120,12 @@ export function OrgSwitcher({ collapsed = false }: OrgSwitcherProps) {
                 <DropdownMenuContent align="start" className="w-64">
                     <DropdownMenuLabel>Organizations</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {organizations && organizations.length > 0 ? (
+                    {organizations.length > 0 ? (
                         organizations.map((org) => (
                             <DropdownMenuItem
                                 key={org.id}
-                                onClick={() => setActiveTenant(org.tenantId)}
+                                disabled={isPending}
+                                onClick={() => handleSwitch(org.tenantId)}
                                 className="flex items-center gap-2"
                             >
                                 <Avatar className="h-6 w-6">
@@ -166,6 +182,9 @@ export function OrgSwitcher({ collapsed = false }: OrgSwitcherProps) {
                                     }
                                 }}
                             />
+                            {error && (
+                                <p className="text-sm text-destructive">{error}</p>
+                            )}
                         </div>
                     </div>
                     <DialogFooter>
@@ -174,9 +193,11 @@ export function OrgSwitcher({ collapsed = false }: OrgSwitcherProps) {
                         </Button>
                         <Button
                             onClick={handleCreateOrg}
-                            disabled={!newOrgName.trim() || createOrg.isPending}
+                            disabled={!newOrgName.trim() || isPending}
                         >
-                            {createOrg.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isPending && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
                             Create Organization
                         </Button>
                     </DialogFooter>
