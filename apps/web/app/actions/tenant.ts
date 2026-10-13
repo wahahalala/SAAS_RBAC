@@ -29,6 +29,8 @@ import { getTenantContext } from "@/lib/server/tenant";
 export interface ActionResult<T = undefined> {
     error: string | null;
     data?: T;
+    /** Set on success: where the caller should navigate. */
+    redirectTo?: string;
 }
 
 const createOrganizationSchema = z.object({

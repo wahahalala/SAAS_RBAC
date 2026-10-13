@@ -33,8 +33,11 @@ export function AccountActions() {
             const result = await deleteAccountAction();
             if (result?.error) {
                 toast.error(result.error);
+                return;
             }
-            // On success the action redirects, so there is nothing to do here.
+            if (result?.redirectTo) {
+                window.location.href = result.redirectTo;
+            }
         });
     };
 
@@ -52,7 +55,9 @@ export function AccountActions() {
                     disabled={isPending}
                     onClick={() =>
                         startTransition(() => {
-                            void logoutAction();
+                            void logoutAction().then((result) => {
+                                if (result?.redirectTo) window.location.href = result.redirectTo;
+                            });
                         })
                     }
                 >

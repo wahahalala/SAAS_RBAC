@@ -9,7 +9,9 @@
         "lint": "eslint .",
         "type-check": "tsc --noEmit",
         "test": "vitest run",
-        "test:cov": "vitest run --coverage"
+        "test:cov": "vitest run --coverage",
+        "e2e": "playwright test",
+        "e2e:ui": "playwright test --ui"
     },
     "dependencies": {
         "@hookform/resolvers": "^5.2.2",
@@ -41,6 +43,7 @@
         "zustand": "^5.0.9"
     },
     "devDependencies": {
+        "@playwright/test": "^1.49.0",
         "@saas/eslint-config": "workspace:*",
         "@saas/typescript-config": "workspace:*",
         "@tailwindcss/postcss": "^4.0.0",

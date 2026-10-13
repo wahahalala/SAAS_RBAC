@@ -298,14 +298,57 @@ Behaviour worth knowing:
 | `apps/api/test/queue-report.spec.ts` | report queue contract (payload, retry policy, job-id dedupe) |
 | `apps/worker/test/report-runner.spec.ts` | real CSV/PDF generation, per-tenant scoping, failure recording and retry recovery |
 | `apps/worker/test/report-writers.spec.ts` | CSV RFC 4180 escaping and real PDF output (magic/trailer/pagination) |
-| `apps/web/test/server-fetch.spec.ts` | server data layer: tenant header, error contract, no-store caching |
+| `apps/web/test/server-fetch.spec.ts` | server data layer: tenant header, active-tenant reconciliation (cookie → first membership), error contract, no-store caching |
 | `apps/web/test/architecture.spec.ts` | structural guardrails: no client pages, no `useEffect` fetching, no server data in client stores |
-| `apps/web/test/tenant-header.spec.ts` | `X-Tenant-Id` injection, retry pinning, persistence and fallback |
-| `apps/web/test/invitation-flow.spec.ts` | invitation calls stay unscoped, admin calls stay scoped, open-redirect guard |
+
+#### End-to-end
+
+The unit/integration suites above run in isolation (mocked collaborators). The
+end-to-end suites run the **real** stack — a real NestJS app over HTTP, a real
+Redis queue, a real browser against the real Next.js server — which is the only
+way to catch the integration bugs those suites cannot (a broken global guard
+order, a `Set-Cookie` the browser never sends, a cookie written while the page is
+still streaming).
+
+| Suite | Harness | Covers |
+|-------|---------|--------|
+| `apps/api/test/e2e/auth.e2e-spec.ts` | Jest + Supertest | register/login, `GET /auth/me`, logout revokes the session, `/auth/session` mints a token **without** rotating the refresh cookie, garbage refresh cookie rejected |
+| `apps/api/test/e2e/tenant-isolation.e2e-spec.ts` | Jest + Supertest | a tenant-bound request without `X-Tenant-Id` is 403; audit rows never cross tenants; a foreign `X-Tenant-Id` is rejected (not merely filtered) |
+| `apps/api/test/e2e/rbac.e2e-spec.ts` | Jest + Supertest | `/auth/me/permissions`, admin passes / member (no grants) is 403 through the real `PermissionGuard`, grants do not leak across tenants |
+| `apps/api/test/e2e/bullmq.e2e-spec.ts` | Jest + Supertest + real Redis | a report requested through the API is consumed by a real `Worker` (shared queue/job names); an invitation lands on the email queue with its token |
+| `apps/api/test/e2e/smoke.e2e-spec.ts` | Jest + Supertest | the harness itself: the app serves under the global prefix and the seeded users authenticate |
+| `apps/web/e2e/login.spec.ts` | Playwright | wrong password renders an inline error and stays on `/login`; the seeded admin lands on the dashboard; `/dashboard` redirects signed-out users to `/login?redirect=` |
+| `apps/web/e2e/tenant-switch.spec.ts` | Playwright | creating an organization from the switcher makes it active (Server Action writes the tenant cookie and the server re-renders); switching back re-renders |
+| `apps/web/e2e/permission-ui.spec.ts` | Playwright | the server-side permission gate: the admin sees the billing "Reports" panel, a permission-less member does not (it is server-removed, not CSS-hidden) |
+
+```bash
+# API e2e — spins up the Nest app in memory; uses its OWN database (<name>_e2e),
+# created and migrated by test/jest-e2e-setup.js, so it cannot wipe your dev data.
+pnpm --filter api test:e2e
+
+# Web e2e — builds api + worker, seeds the database, boots api + worker + web
+# (Playwright `webServer`), then drives a real Chromium.
+pnpm --filter web e2e
+```
 
 `apps/api` and `apps/worker` tests hit a real PostgreSQL database (`docker compose up -d` first, then `pnpm --filter api test` / `pnpm --filter worker test`).
 
 The worker reads its own `apps/worker/.env` (it is a separate process from the API, so it does not inherit the API's). It needs `DATABASE_URL`, `REDIS_*` and — to generate reports — the same `REPORTS_DIR` the API uses. See `.env.example`.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request,
+against `postgres:16` and `redis:7` **service containers** (no `.env` file exists
+in CI, so the workflow sets the environment explicitly).
+
+| Job | Steps |
+|-----|-------|
+| `checks` | install → Prisma generate → `migrate deploy` → `pnpm type-check` → `pnpm lint` → `pnpm test` (Vitest: api, worker, web) |
+| `e2e` | install → Prisma generate → `migrate deploy` → `pnpm --filter api test:e2e` (Jest + Supertest) → build api + worker → install Chromium → `pnpm --filter web e2e` (Playwright) → upload the Playwright report |
+
+The two jobs each get their own service containers, so the `checks` job's database
+and the `e2e` job's database never interfere.
+
 
 ### Developer Experience
 - [x] pnpm monorepo with Turborepo
@@ -442,6 +485,9 @@ docker compose down -v
 | `pnpm lint` | Lint all packages |
 | `pnpm type-check` | Type-check all apps |
 | `pnpm test` | Run all test suites (api/worker: vitest + Prisma, web: vitest) |
+| `pnpm --filter api test:e2e` | API end-to-end (Jest + Supertest) against a real app + DB |
+| `pnpm --filter web e2e` | Browser end-to-end (Playwright); builds api + worker and boots the whole stack |
+| `pnpm --filter web e2e:ui` | Playwright in interactive UI mode |
 | `pnpm db:generate` | Generate Prisma client |
 | `pnpm db:migrate` | Run database migrations (`prisma migrate dev`) |
 | `pnpm db:seed` | Seed demo data (`prisma db seed`) |
@@ -470,6 +516,8 @@ docker compose down -v
 - [x] Domain events + email/audit/analytics listeners
 - [x] Enterprise audit trail + query API (pagination/filter/search)
 - [x] Frontend refactor to RSC / Server Actions / BFF
+- [x] **End-to-end tests**: Jest + Supertest over the real API (auth, tenant isolation, RBAC, BullMQ) and Playwright over the real browser (login, tenant switch, permission UI)
+- [x] **GitHub Actions CI**: `checks` (type-check + lint + Vitest) and `e2e` (Supertest + Playwright) jobs against Postgres 16 / Redis 7 service containers
 - [ ] Real email transport (SMTP/Resend; the worker currently logs the send)
 - [ ] Report retention/cleanup job (artifacts currently accumulate on disk)
 - [ ] S3/R2 artifact storage (local disk is single-host only)

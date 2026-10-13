@@ -5,7 +5,7 @@ import type {
 } from "@saas/shared-types";
 import { getActiveTenantId } from "./tenant-cookie";
 import { getServerSession } from "./session";
-import { serverFetch, serverFetchOrThrow } from "./api";
+import { serverFetch, serverFetchOrThrow, resolveActiveTenantId } from "./api";
 
 /**
  * Server-side tenant context for Server Components.
@@ -109,11 +109,18 @@ export async function getTenantContextOrError(returnTo?: string) {
 
 /** Permissions for the active tenant, for server-side gating of UI. */
 export async function getServerPermissions(): Promise<Set<string>> {
-    const tenantId = await getActiveTenantId();
+    // Same reconciliation `getTenantContext` performs for display: the cookie
+    // when it still names one of the caller's tenants, otherwise their first.
+    // Reading the cookie alone returns an empty set right after login (the cookie
+    // is cleared there), which would hide admin-only UI from an admin.
+    const tenantId = await resolveActiveTenantId();
     if (!tenantId) return new Set();
 
+    // Pass the resolved tenant explicitly so the permission query and the page's
+    // data fetch cannot disagree about scope.
     const result = await serverFetch<{ permissions: string[] }>(
         "/auth/me/permissions",
+        { tenantId },
     );
 
     return new Set(result.data?.permissions ?? []);

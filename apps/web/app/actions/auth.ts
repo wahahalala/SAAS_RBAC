@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import {
@@ -28,6 +27,8 @@ import { selfOrigin } from "@/lib/server/origin";
 
 export interface AuthActionResult {
     error: string | null;
+    /** Set on success: where the client should navigate. */
+    redirectTo?: string;
 }
 
 /** Path to return to, validated so `?redirect=` cannot become an open redirect. */
@@ -130,7 +131,7 @@ export async function loginAction(
     await setActiveTenantCookie(null);
 
     revalidatePath("/", "layout");
-    redirect(safeRedirectTarget(input.redirectTo));
+    return { error: null, redirectTo: safeRedirectTarget(input.redirectTo) };
 }
 
 export async function registerAction(
@@ -157,7 +158,7 @@ export async function registerAction(
     await setActiveTenantCookie(null);
 
     revalidatePath("/", "layout");
-    redirect(safeRedirectTarget(input.redirectTo));
+    return { error: null, redirectTo: safeRedirectTarget(input.redirectTo) };
 }
 
 /**
@@ -185,7 +186,7 @@ export async function logoutAction(): Promise<AuthActionResult> {
     await setActiveTenantCookie(null);
 
     revalidatePath("/", "layout");
-    redirect("/login");
+    return { error: null, redirectTo: "/login" };
 }
 
 /** Sign out every device. */
@@ -215,5 +216,5 @@ export async function logoutAllAction(): Promise<AuthActionResult> {
     await setActiveTenantCookie(null);
 
     revalidatePath("/", "layout");
-    redirect("/login");
+    return { error: null, redirectTo: "/login" };
 }

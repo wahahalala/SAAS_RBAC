@@ -145,7 +145,7 @@ export function CommandPalette() {
                     {/* Account */}
                     <CommandGroup heading="Account">
                         <CommandItem
-                            onSelect={() => runCommand(() => logoutAction())}
+                            onSelect={() => runCommand(() => logoutAction().then((r) => { if (r?.redirectTo) window.location.href = r.redirectTo; }))}
                             className="text-destructive"
                         >
                             <LogOut className="mr-2 h-4 w-4" />

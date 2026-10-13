@@ -1,6 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { acceptInvitationAction } from "@/app/actions/invitations";
@@ -12,18 +13,27 @@ import { acceptInvitationAction } from "@/app/actions/invitations";
  * client code; on success it redirects to the organization that was just joined.
  */
 export function AcceptInvitationButton({ token }: { token: string }) {
-    const [isPending, startTransition] = useTransition();
+    const router = useRouter();
+    const [isPending, setIsPending] = useState(false);
 
     return (
         <Button
             className="w-full"
             disabled={isPending}
             onClick={() => {
-                startTransition(async () => {
-                    // The action redirects on success, so there is nothing to do
-                    // with the result here.
-                    await acceptInvitationAction(token);
-                });
+                setIsPending(true);
+                void acceptInvitationAction(token)
+                    .then((result) => {
+                        if (result?.error) {
+                            // Errors are server-rendered via the status card on
+                            // revalidation; a hard reload surfaces them reliably.
+                            router.refresh();
+                        } else if (result?.redirectTo) {
+                            router.push(result.redirectTo);
+                            router.refresh();
+                        }
+                    })
+                    .finally(() => setIsPending(false));
             }}
         >
             {isPending ? (

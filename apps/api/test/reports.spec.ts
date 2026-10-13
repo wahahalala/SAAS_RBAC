@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { PrismaService } from "@/prisma/prisma.service";
-import { CacheService } from "@/modules/redis/cache.service";
 import { TenantContext } from "@/modules/tenant";
 import { ReportsService } from "@/modules/reports/reports.service";
 import { ReportQueueService } from "@/modules/queue";

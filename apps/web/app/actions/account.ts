@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { serverFetch } from "@/lib/server/api";
@@ -30,5 +29,5 @@ export async function deleteAccountAction(): Promise<ActionResult> {
     await setActiveTenantCookie(null);
 
     revalidatePath("/", "layout");
-    redirect("/login");
+    return { error: null, redirectTo: "/login" };
 }

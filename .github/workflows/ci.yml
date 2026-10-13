@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Integration tests, the Jest e2e suite and Playwright all run against the
+  # service containers declared per job (no .env file exists in CI).
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saas_test
+  REDIS_HOST: localhost
+  REDIS_PORT: "6379"
+  REDIS_URL: redis://localhost:6379
+  JWT_SECRET: ci-only-jwt-secret
+  JWT_REFRESH_SECRET: ci-only-refresh-secret
+  JWT_ACCESS_EXPIRATION: 15m
+  JWT_REFRESH_EXPIRATION: 7d
+  FRONTEND_URL: http://localhost:3100
+  API_ORIGIN: http://localhost:3001
+  # The API writes report artifacts and the worker reads them (and vice versa
+  # for downloads), so both processes need one agreed absolute path.
+  REPORTS_DIR: ${{ github.workspace }}/storage/reports
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  # ============================================================
+  # Type checking, linting and the Vitest unit/integration suites
+  # ============================================================
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pnpm version from package.json's `packageManager` field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter api db:generate
+
+      - name: Apply migrations
+        run: pnpm --filter api db:migrate:prod
+
+      - name: Type check
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit and integration tests (api, worker, web)
+        run: pnpm test
+
+  # ============================================================
+  # End-to-end: Supertest against the real API, then Playwright
+  # against the real API + worker + web app.
+  # ============================================================
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter api db:generate
+
+      - name: Apply migrations
+        run: pnpm --filter api db:migrate:prod
+
+      - name: API e2e (Jest + Supertest)
+        run: pnpm --filter api test:e2e
+
+      - name: Build api and worker
+        run: |
+          pnpm --filter api build
+          pnpm --filter worker build
+
+      - name: Install Playwright browser
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Web e2e (Playwright)
+        run: pnpm --filter web e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

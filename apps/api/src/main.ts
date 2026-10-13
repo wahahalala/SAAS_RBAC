@@ -1,10 +1,19 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { INestApplication } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 
-async function bootstrap() {
+/**
+ * Configure the Nest application.
+ *
+ * Extracted from `bootstrap()` so end-to-end tests (Supertest) can build the
+ * exact same app — same pipes, same prefix, same CORS — without opening a real
+ * socket. Keeping the two in one place means a test can never silently disagree
+ * with production about URL structure or validation behaviour.
+ */
+export async function createApp(): Promise<INestApplication> {
     const app = await NestFactory.create(AppModule);
 
     // Cookie parsing for httpOnly refresh token
@@ -42,10 +51,20 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup("docs", app, document);
 
+    return app;
+}
+
+async function bootstrap() {
+    const app = await createApp();
+
     const port = process.env.PORT || 3001;
     await app.listen(port);
-    console.log(`🚀 API running on http://localhost:${port}/${apiPrefix}`);
+    console.log(`🚀 API running on http://localhost:${port}/${process.env.API_PREFIX || "api/v1"}`);
     console.log(`📚 Docs available at http://localhost:${port}/docs`);
 }
 
-bootstrap();
+// Only start listening when this file is executed directly (`node dist/main`).
+// Importing it from a test (to reuse createApp) must NOT open a real socket.
+if (require.main === module) {
+    void bootstrap();
+}

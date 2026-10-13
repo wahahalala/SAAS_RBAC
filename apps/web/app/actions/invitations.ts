@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { selfOrigin } from "@/lib/server/origin";
 import { getServerSession } from "@/lib/server/session";
@@ -18,14 +17,15 @@ import { getServerSession } from "@/lib/server/session";
  */
 export async function acceptInvitationAction(
     token: string,
-): Promise<{ error: string } | never> {
+): Promise<{ error: string | null; redirectTo?: string }> {
     const session = await getServerSession();
 
     if (!session) {
         // Send them to sign in and come back to the same invitation.
-        redirect(
-            `/login?redirect=${encodeURIComponent(`/invitations/${token}`)}`,
-        );
+        return {
+            error: null,
+            redirectTo: `/login?redirect=${encodeURIComponent(`/invitations/${token}`)}`,
+        };
     }
 
     let response: Response;
@@ -61,9 +61,10 @@ export async function acceptInvitationAction(
     // The membership is new, so the dashboard shell's tenant list is stale.
     revalidatePath("/dashboard", "layout");
 
-    redirect(
-        result.organizationSlug
+    return {
+        error: null,
+        redirectTo: result.organizationSlug
             ? `/dashboard?joined=${encodeURIComponent(result.organizationSlug)}`
             : "/dashboard",
-    );
+    };
 }

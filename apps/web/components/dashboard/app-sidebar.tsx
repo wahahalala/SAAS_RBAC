@@ -24,6 +24,7 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    useSidebar,
 } from "@/components/ui/sidebar";
 import {
     DropdownMenu,
@@ -32,6 +33,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { OrgSwitcher } from "./org-switcher";
 import { logoutAction } from "@/app/actions/auth";
 import type {
     OrganizationMembershipResponse,
@@ -60,6 +62,7 @@ const orgNavItems = [
  */
 export function AppSidebar({
     user,
+    organizations,
     activeOrganization,
 }: {
     user: UserResponse | null;
@@ -68,6 +71,8 @@ export function AppSidebar({
 }) {
     const pathname = usePathname();
     const [isPending, startTransition] = useTransition();
+    const { isMobile, state } = useSidebar();
+    const isCollapsed = state === "collapsed" && !isMobile;
 
     const getInitials = (name: string | null) => {
         if (!name) return "U";
@@ -99,6 +104,26 @@ export function AppSidebar({
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
+
+                {/*
+                 * The organization switcher lives here, not in a client store:
+                 * the tenant list and the active tenant are props from the Server
+                 * Component layout, and picking one runs the Server Action that
+                 * re-scopes every page.
+                 */}
+                <div
+                    className={
+                        isCollapsed
+                            ? "flex justify-center px-1 pt-2"
+                            : "px-1 pt-2"
+                    }
+                >
+                    <OrgSwitcher
+                        collapsed={isCollapsed}
+                        organizations={organizations}
+                        activeOrganization={activeOrganization}
+                    />
+                </div>
             </SidebarHeader>
 
             <SidebarContent>
@@ -193,7 +218,9 @@ export function AppSidebar({
                                     // server, so no token handling on the client.
                                     onClick={() =>
                                         startTransition(() => {
-                                            void logoutAction();
+                                            void logoutAction().then((result) => {
+                                if (result?.redirectTo) window.location.href = result.redirectTo;
+                            });
                                         })
                                     }
                                     className="text-destructive focus:text-destructive"

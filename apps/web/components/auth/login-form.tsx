@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Github } from "lucide-react";
@@ -15,9 +15,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 
 export function LoginForm() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
-    const [isPending, startTransition] = useTransition();
+    const [isPending, setIsPending] = useState(false);
 
     // Deep link target (e.g. an invitation accept page). Validated again by the
     // Server Action before redirecting.
@@ -33,23 +34,34 @@ export function LoginForm() {
 
     const onSubmit = (data: LoginInput) => {
         setError(null);
+        setIsPending(true);
         // A Server Action: the API call, the refresh cookie and the redirect all
         // happen on the server, so no token touches client JavaScript.
-        startTransition(async () => {
-            const result = await loginAction({
-                ...data,
-                redirectTo: redirect ?? undefined,
-            });
-            if (result?.error) {
-                setError(result.error);
-            }
-        });
+        //
+        // NOT wrapped in `startTransition`: a transition swallows the
+        // NEXT_REDIRECT the action throws, leaving the form stuck on /login
+        // even after a successful sign-in.
+        void loginAction({
+            ...data,
+            redirectTo: redirect ?? undefined,
+        })
+            .then((result) => {
+                if (result?.error) {
+                    setError(result.error);
+                    return;
+                }
+                if (result?.redirectTo) {
+                    router.push(result.redirectTo);
+                    router.refresh();
+                }
+            })
+            .finally(() => setIsPending(false));
     };
 
     const handleOAuth = (provider: "google" | "github") => {
         // Same-origin: keeps the refresh cookie on the web host so server
         // rendering can read it.
-        window.location.href = `/api/v1/auth/${provider}`;
+        window.location.href = `/api/auth/${provider}`;
     };
 
     return (

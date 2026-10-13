@@ -54,9 +54,6 @@ function buildContext(permissionKey: string, userId: string, tenantId: string) {
 
 let tenantAId!: string;
 let adminUserId!: string;
-let adminRoleId!: string;
-let projectReadId!: string;
-let projectCreateId!: string;
 
 beforeAll(async () => {
     await db.$connect();
@@ -76,7 +73,6 @@ beforeAll(async () => {
     const role = await db.role.create({
         data: { key: "rbac-admin", name: "RBAC Admin", isSystem: false, tenantId: tenant.id },
     });
-    adminRoleId = role.id;
 
     await db.membership.create({
         data: { tenantId: tenant.id, userId: user.id, roleId: role.id },
@@ -86,12 +82,10 @@ beforeAll(async () => {
     const read = await db.permission.create({
         data: { key: "project.read", name: "Read projects" },
     });
-    projectReadId = read.id;
 
-    const create = await db.permission.create({
+    await db.permission.create({
         data: { key: "project.create", name: "Create projects" },
     });
-    projectCreateId = create.id;
 
     await db.rolePermission.create({
         data: { roleId: role.id, permissionId: read.id },

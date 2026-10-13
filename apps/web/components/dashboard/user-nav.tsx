@@ -72,7 +72,9 @@ export function UserNav({ user }: { user: UserResponse | null }) {
                     disabled={isPending}
                     onClick={() =>
                         startTransition(() => {
-                            void logoutAction();
+                            void logoutAction().then((result) => {
+                                if (result?.redirectTo) window.location.href = result.redirectTo;
+                            });
                         })
                     }
                     className="text-destructive focus:text-destructive"

@@ -167,6 +167,63 @@ describe("serverFetch", () => {
         // A cached response would leak one user's data to the next.
         expect((fetchMock.mock.calls[0]![1] as RequestInit).cache).toBe("no-store");
     });
+
+    it("falls back to the first organization when no tenant cookie is set", async () => {
+        // Right after login the cookie is cleared, so a scoped fetch would
+        // otherwise go out without X-Tenant-Id and the API would answer 403 —
+        // which is exactly what hid admin-only UI and broke the team page.
+        getServerSessionMock.mockResolvedValue({
+            accessToken: "access-token",
+            user: { id: "u1" },
+        });
+        cookiesMock.mockResolvedValue(cookieStore({}));
+        fetchMock.mockImplementation((url: string) => {
+            if (String(url).includes("/users/me/organizations")) {
+                return Promise.resolve(
+                    jsonResponse([
+                        { tenantId: "tenant-first" },
+                        { tenantId: "tenant-second" },
+                    ]),
+                );
+            }
+            return Promise.resolve(jsonResponse([]));
+        });
+
+        const { serverFetch } = await loadApi();
+        await serverFetch("/projects");
+
+        const scopedCall = fetchMock.mock.calls.find(([url]) =>
+            String(url).includes("/projects"),
+        )!;
+        const headers = (scopedCall[1] as RequestInit).headers as Record<string, string>;
+
+        expect(headers["X-Tenant-Id"]).toBe("tenant-first");
+    });
+
+    it("prefers the cookie over the fallback when both are available", async () => {
+        getServerSessionMock.mockResolvedValue({
+            accessToken: "access-token",
+            user: { id: "u1" },
+        });
+        cookiesMock.mockResolvedValue(
+            cookieStore({ "saas.activeTenantId": "tenant-chosen" }),
+        );
+        fetchMock.mockResolvedValue(jsonResponse([]));
+
+        const { serverFetch } = await loadApi();
+        await serverFetch("/projects");
+
+        const headers = (fetchMock.mock.calls[0]![1] as RequestInit)
+            .headers as Record<string, string>;
+
+        expect(headers["X-Tenant-Id"]).toBe("tenant-chosen");
+        // The explicit choice must not cost an extra discovery round trip.
+        expect(
+            fetchMock.mock.calls.some(([url]) =>
+                String(url).includes("/users/me/organizations"),
+            ),
+        ).toBe(false);
+    });
 });
 
 describe("serverFetchOrThrow", () => {

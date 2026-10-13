@@ -1,3 +1,5 @@
+import { cache } from "react";
+import type { OrganizationMembershipResponse } from "@saas/shared-types";
 import { getActiveTenantId } from "./tenant-cookie";
 import { getServerSession } from "./session";
 import { selfOrigin } from "./origin";
@@ -16,11 +18,65 @@ import { selfOrigin } from "./origin";
 
 const API_BASE = "/api/v1";
 
+/**
+ * The tenant a *default* (tenant-scoped) fetch is scoped to.
+ *
+ * The cookie is the user's explicit choice, but it is cleared on sign-in (the
+ * previous account's tenants are meaningless), so immediately after login it is
+ * empty even though the caller does belong to an organization. Reconciling the
+ * same way the dashboard does — keep the cookie while it still names one of the
+ * caller's memberships, otherwise use the first — is what keeps every scoped
+ * request working (team data, billing permissions, the reports route) before the
+ * user ever opens the switcher.
+ *
+ * `cache()` resolves this at most once per render, however many `serverFetch`
+ * calls ask for it. Outside a React request (unit tests, scripts) it degrades to
+ * a plain call.
+ */
+export const resolveActiveTenantId = cache(async (): Promise<string | null> => {
+    const explicitTenantId = await getActiveTenantId();
+    if (explicitTenantId) return explicitTenantId;
+
+    const session = await getServerSession();
+    if (!session) return null;
+
+    const organizations = await fetchOrganizations(session.accessToken);
+    return organizations[0]?.tenantId ?? null;
+});
+
+/**
+ * The caller's memberships, fetched with the low-level transport.
+ *
+ * Deliberately NOT `serverFetch`: this runs *inside* default-tenant resolution,
+ * so going through `serverFetch` again would recurse.
+ */
+async function fetchOrganizations(
+    accessToken: string,
+): Promise<OrganizationMembershipResponse[]> {
+    try {
+        const response = await fetch(
+            `${selfOrigin()}${API_BASE}/users/me/organizations`,
+            {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                cache: "no-store",
+            },
+        );
+
+        if (!response.ok) return [];
+
+        return (await response.json()) as OrganizationMembershipResponse[];
+    } catch {
+        // No tenant to scope to — the caller falls back to a tenant-less request.
+        return [];
+    }
+}
+
 export interface ServerFetchOptions {
     method?: "GET" | "POST" | "PATCH" | "DELETE";
     body?: unknown;
     /**
-     * Tenant scope. Defaults to the caller's active tenant cookie; pass `null`
+     * Tenant scope. Defaults to the caller's active tenant — the cookie while it
+     * still names one of their memberships, otherwise the first one; pass `null`
      * explicitly for user-level endpoints (tenant discovery, /auth/me).
      */
     tenantId?: string | null;
@@ -59,7 +115,7 @@ export async function serverFetch<T>(
 
     const tenantId =
         options.tenantId === undefined
-            ? await getActiveTenantId()
+            ? await resolveActiveTenantId()
             : options.tenantId;
 
     const headers: Record<string, string> = {

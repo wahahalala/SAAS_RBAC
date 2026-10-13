@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Github } from "lucide-react";
@@ -15,9 +15,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 
 export function RegisterForm() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
-    const [isPending, startTransition] = useTransition();
+    const [isPending, setIsPending] = useState(false);
 
     // Deep link target (e.g. an invitation accept page).
     const redirect = searchParams.get("redirect");
@@ -32,21 +33,28 @@ export function RegisterForm() {
 
     const onSubmit = (data: RegisterInput) => {
         setError(null);
-        startTransition(async () => {
-            const result = await registerAction({
+        setIsPending(true);
+        void registerAction({
                 ...data,
                 redirectTo: redirect ?? undefined,
-            });
-            if (result?.error) {
-                setError(result.error);
-            }
-        });
+            })
+            .then((result) => {
+                if (result?.error) {
+                    setError(result.error);
+                    return;
+                }
+                if (result?.redirectTo) {
+                    router.push(result.redirectTo);
+                    router.refresh();
+                }
+            })
+            .finally(() => setIsPending(false));
     };
 
     const handleOAuth = (provider: "google" | "github") => {
         // Same-origin: keeps the refresh cookie on the web host so server
         // rendering can read it.
-        window.location.href = `/api/v1/auth/${provider}`;
+        window.location.href = `/api/auth/${provider}`;
     };
 
     return (
