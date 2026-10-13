@@ -21,7 +21,11 @@ import { OrganizationsController } from "@/modules/organizations/organizations.c
  */
 
 const db = new PrismaService();
-const usersService = new UsersService(db);
+// The user service now emits domain events; a stub keeps this suite focused on
+// tenant discovery.
+const usersService = new UsersService(db, {
+    userDeleted: () => undefined,
+} as never);
 const reflector = new Reflector();
 
 let tenantAId!: string;

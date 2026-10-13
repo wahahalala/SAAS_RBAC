@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { DomainEventsService } from "@/modules/events";
 import { UpdateUserDto } from "./dto";
 
 @Injectable()
 export class UsersService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly domainEvents: DomainEventsService,
+    ) { }
 
     /**
      * Get user by ID
@@ -94,9 +98,38 @@ export class UsersService {
     /**
      * Delete user account
      */
-    async delete(userId: string) {
-        await this.prisma.user.delete({
+    async delete(
+        userId: string,
+        request?: { ipAddress?: string; userAgent?: string },
+    ) {
+        // Read the identity BEFORE deleting: afterwards there is no row to look
+        // up, and the delete cascades the user's memberships away with it.
+        const user = await this.prisma.user.findUnique({
             where: { id: userId },
+            select: { id: true, email: true, name: true },
+        });
+
+        if (!user) {
+            throw new NotFoundException("User not found");
+        }
+
+        // Attribute the audit row to a tenant the user belonged to, if any:
+        // after this delete there is no way to recover that association.
+        const membership = await this.prisma.membership.findFirst({
+            where: { userId },
+            select: { tenantId: true },
+            orderBy: { createdAt: "asc" },
+        });
+
+        await this.prisma.user.delete({ where: { id: userId } });
+
+        this.domainEvents.userDeleted({
+          tenantId: membership?.tenantId ?? null,
+          actorId: userId,
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          request,
         });
     }
 }

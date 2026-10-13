@@ -13,6 +13,7 @@ import type { Report } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { TenantContext } from "@/modules/tenant";
 import { ReportQueueService } from "@/modules/queue";
+import { DomainEventsService } from "@/modules/events";
 import type {
     CreateReportResponse,
     ReportFormatName,
@@ -34,6 +35,7 @@ export class ReportsService {
         private readonly prisma: PrismaService,
         private readonly tenantContext: TenantContext,
         private readonly reportQueue: ReportQueueService,
+        private readonly domainEvents: DomainEventsService,
     ) {}
 
     /**
@@ -153,7 +155,11 @@ export class ReportsService {
      * not enough to read another tenant's file. The stored `filePath` is never
      * exposed to the client for the same reason.
      */
-    async openDownload(id: string): Promise<{
+    async openDownload(
+        id: string,
+        actorId?: string,
+        request?: { ipAddress?: string; userAgent?: string },
+    ): Promise<{
         stream: Readable;
         fileName: string;
         fileSize: number;
@@ -176,9 +182,26 @@ export class ReportsService {
             throw new NotFoundException("Report file is no longer available");
         }
 
+        const fileName = report.fileName ?? `${report.type}-${report.id}`;
+
+        // Audited at the point the bytes are served, which is the moment data
+        // actually leaves the system — not when the export was requested.
+        this.domainEvents.dataExported({
+            // The row was resolved within the caller's tenant, so this is the
+            // authorised tenant rather than a client-supplied value.
+            tenantId: report.tenantId,
+            actorId: actorId ?? report.requestedById,
+            userId: actorId ?? report.requestedById,
+            reportId: report.id,
+            reportType: report.type,
+            format: report.format,
+            fileName,
+            request,
+        });
+
         return {
             stream: createReadStream(report.filePath),
-            fileName: report.fileName ?? `${report.type}-${report.id}`,
+            fileName,
             fileSize,
         };
     }

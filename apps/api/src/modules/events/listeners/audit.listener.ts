@@ -2,11 +2,15 @@ import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
+    AUDIT_ACTIONS,
     DOMAIN_EVENTS,
+    type DataExportedEvent,
     type ReportCompletedEvent,
     type RoleChangedEvent,
+    type SessionEvent,
     type TenantCreatedEvent,
     type UserCreatedEvent,
+    type UserDeletedEvent,
 } from "@saas/shared-types";
 
 /**
@@ -37,7 +41,8 @@ export class AuditListener {
         await this.record({
             tenantId: event.tenantId,
             userId: event.userId,
-            action: "user.created",
+            action: AUDIT_ACTIONS.CREATE_USER,
+            request: event.request,
             entity: "User",
             entityId: event.userId,
             metadata: { email: event.email, source: event.source },
@@ -51,7 +56,8 @@ export class AuditListener {
         await this.record({
             tenantId: event.tenantId,
             userId: event.actorId ?? event.ownerId,
-            action: "tenant.created",
+            action: AUDIT_ACTIONS.CREATE_TENANT,
+            request: event.request,
             entity: "Tenant",
             entityId: event.tenantId,
             metadata: { name: event.tenantName, slug: event.tenantSlug },
@@ -63,7 +69,8 @@ export class AuditListener {
         await this.record({
             tenantId: event.tenantId,
             userId: event.actorId,
-            action: "role.changed",
+            action: AUDIT_ACTIONS.CHANGE_ROLE,
+            request: event.request,
             entity: "Membership",
             entityId: event.membershipId,
             metadata: {
@@ -79,7 +86,8 @@ export class AuditListener {
         await this.record({
             tenantId: event.tenantId,
             userId: event.requestedById,
-            action: `report.${event.status}`,
+            action: AUDIT_ACTIONS.REPORT_COMPLETED,
+            request: event.request,
             entity: "Report",
             entityId: event.reportId,
             metadata: {
@@ -92,6 +100,72 @@ export class AuditListener {
         });
     }
 
+    @OnEvent(DOMAIN_EVENTS.USER_DELETED, { async: true })
+    async onUserDeleted(event: UserDeletedEvent): Promise<void> {
+        // Identity is taken from the event, not looked up: the row is gone, and
+        // the FK will null it out on the audit row's `userId`.
+        await this.record({
+            tenantId: event.tenantId,
+            userId: event.actorId,
+            action: AUDIT_ACTIONS.DELETE_USER,
+            request: event.request,
+            entity: "User",
+            entityId: event.userId,
+            metadata: { email: event.email, name: event.name },
+        });
+    }
+
+    @OnEvent(DOMAIN_EVENTS.USER_LOGGED_IN, { async: true })
+    async onLoggedIn(event: SessionEvent): Promise<void> {
+        await this.record({
+            tenantId: event.tenantId,
+            userId: event.userId,
+            action: AUDIT_ACTIONS.LOGIN,
+            request: event.request,
+            entity: "User",
+            entityId: event.userId,
+            metadata: {
+                email: event.email,
+                method: event.method ?? null,
+                device: event.device ?? null,
+            },
+        });
+    }
+
+    @OnEvent(DOMAIN_EVENTS.USER_LOGGED_OUT, { async: true })
+    async onLoggedOut(event: SessionEvent): Promise<void> {
+        await this.record({
+            tenantId: event.tenantId,
+            userId: event.userId,
+            action: AUDIT_ACTIONS.LOGOUT,
+            request: event.request,
+            entity: "User",
+            entityId: event.userId,
+            metadata: {
+                email: event.email,
+                allDevices: event.allDevices ?? false,
+            },
+        });
+    }
+
+    @OnEvent(DOMAIN_EVENTS.DATA_EXPORTED, { async: true })
+    async onDataExported(event: DataExportedEvent): Promise<void> {
+        // Export auditing is the point of this action: data left the system.
+        await this.record({
+            tenantId: event.tenantId,
+            userId: event.userId,
+            action: AUDIT_ACTIONS.EXPORT_DATA,
+            request: event.request,
+            entity: "Report",
+            entityId: event.reportId,
+            metadata: {
+                type: event.reportType,
+                format: event.format,
+                fileName: event.fileName,
+            },
+        });
+    }
+
     private async record(entry: {
         tenantId: string | null;
         userId?: string | null;
@@ -99,6 +173,8 @@ export class AuditListener {
         entity: string;
         entityId: string;
         metadata: Record<string, unknown>;
+        /** Request metadata carried by the event (absent for worker facts). */
+        request?: { ipAddress?: string; userAgent?: string };
     }): Promise<void> {
         try {
             // `tenantId` is nullable: a fact with no tenant (a fresh
@@ -117,6 +193,8 @@ export class AuditListener {
                     entity: entry.entity,
                     entityId: entry.entityId,
                     metadata: entry.metadata as object,
+                    ipAddress: entry.request?.ipAddress ?? null,
+                    userAgent: entry.request?.userAgent ?? null,
                 },
             });
         } catch (error) {

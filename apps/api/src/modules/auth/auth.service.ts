@@ -31,6 +31,20 @@ export interface SessionInfo {
   ipAddress?: string;
 }
 
+/**
+ * Shape SessionInfo for an event payload's audit metadata.
+ *
+ * `device` is the raw User-Agent (also used for the refresh session record), so
+ * it doubles as the audit trail's `userAgent`.
+ */
+function auditRequest(info: SessionInfo): {
+  ipAddress?: string;
+  userAgent?: string;
+} | undefined {
+  if (!info.ipAddress && !info.device) return undefined;
+  return { ipAddress: info.ipAddress, userAgent: info.device };
+}
+
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_SECONDS = 300; // 5 minutes
 
@@ -75,6 +89,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       source: "register",
+      request: auditRequest(info),
     });
 
     return this.generateAuthResponse(user, info);
@@ -118,6 +133,19 @@ export class AuthService {
 
     // Reset the counter after a successful login.
     await this.redis.del(emailKey);
+
+    // Emitted after the credentials check succeeded. Tenant-less: the session
+    // exists before the user has selected a tenant, so the audit row records
+    // the actor rather than a tenant.
+    this.domainEvents.loggedIn({
+      tenantId: null,
+      actorId: user.id,
+      userId: user.id,
+      email: user.email,
+      method: "password",
+      device: info.device,
+      request: auditRequest(info),
+    });
 
     return this.generateAuthResponse(user, info);
   }
@@ -165,23 +193,60 @@ export class AuthService {
   /**
    * Logout the current device (revoke a single refresh session by token hash).
    */
-  async logout(refreshToken: string): Promise<void> {
+  async logout(refreshToken: string, info: SessionInfo = {}): Promise<void> {
     if (!refreshToken) return;
     const tokenHash = this.hashToken(refreshToken);
-    await this.prisma.refreshSession.updateMany({
+
+    // Resolve the owner before revoking: the session row is the only link
+    // between the cookie and the user, and the audit entry needs the actor.
+    const session = await this.prisma.refreshSession.findUnique({
+      where: { tokenHash },
+      include: { user: { select: { id: true, email: true } } },
+    });
+
+    const revoked = await this.prisma.refreshSession.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+    // Only audit an actual revocation: calling logout twice must not produce a
+    // second LOGOUT entry for the same session.
+    if (revoked.count > 0 && session) {
+      this.domainEvents.loggedOut({
+        tenantId: null,
+        actorId: session.user.id,
+        userId: session.user.id,
+        email: session.user.email,
+        allDevices: false,
+        request: auditRequest(info),
+      });
+    }
   }
 
   /**
    * Logout all devices for a user.
    */
-  async logoutAll(userId: string): Promise<void> {
-    await this.prisma.refreshSession.updateMany({
+  async logoutAll(userId: string, info: SessionInfo = {}): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    const revoked = await this.prisma.refreshSession.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+    if (revoked.count > 0 && user) {
+      this.domainEvents.loggedOut({
+        tenantId: null,
+        actorId: user.id,
+        userId: user.id,
+        email: user.email,
+        allDevices: true,
+        request: auditRequest(info),
+      });
+    }
   }
 
   /**
@@ -346,6 +411,16 @@ export class AuthService {
         },
       });
     }
+
+    this.domainEvents.loggedIn({
+      tenantId: null,
+      actorId: user.id,
+      userId: user.id,
+      email: user.email,
+      method: "oauth",
+      device: info.device,
+      request: auditRequest(info),
+    });
 
     return this.generateAuthResponse(user, info);
   }

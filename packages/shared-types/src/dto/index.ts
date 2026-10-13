@@ -4,6 +4,7 @@ import type {
     ReportFormatName,
     ReportStateName,
 } from "../queue";
+import type { AuditAction } from "../audit";
 
 /**
  * Auth response returned by register / login / refresh.
@@ -194,4 +195,42 @@ export interface ReportResponse {
 /** Result of requesting a new report: the row plus the enqueued job id. */
 export interface CreateReportResponse extends ReportResponse {
     jobId: string | null;
+}
+
+/**
+ * An audit log entry as exposed by the API.
+ *
+ * `metadata` is deliberately `Record<string, unknown>`: each action records a
+ * different shape, and the API returns them as stored rather than pretending a
+ * single schema.
+ */
+export interface AuditLogResponse {
+    id: string;
+    tenantId: string | null;
+    userId: string | null;
+    action: AuditAction;
+    entity: string | null;
+    entityId: string | null;
+    metadata: Record<string, unknown> | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    createdAt: Date | string;
+    /** Who did it, resolved for display; null for deleted/system actors. */
+    user: {
+        id: string;
+        email: string;
+        name: string | null;
+    } | null;
+}
+
+/** Paginated audit log page. */
+export interface AuditLogPageResponse {
+    items: AuditLogResponse[];
+    meta: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+        hasMore: boolean;
+    };
 }

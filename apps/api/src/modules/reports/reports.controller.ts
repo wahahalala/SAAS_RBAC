@@ -4,6 +4,7 @@ import {
     Get,
     Param,
     Post,
+    Req,
     Res,
 } from "@nestjs/common";
 import {
@@ -12,7 +13,7 @@ import {
     ApiResponse,
     ApiTags,
 } from "@nestjs/swagger";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { ReportsService } from "./reports.service";
 import { CreateReportDto } from "./dto";
 import { CurrentUser, RequirePermission } from "@/common/decorators";
@@ -68,9 +69,21 @@ export class ReportsController {
     @ApiOperation({ summary: "Download a completed report" })
     @ApiResponse({ status: 200, description: "Report file" })
     @ApiResponse({ status: 409, description: "Report is not ready yet" })
-    async download(@Param("id") id: string, @Res() res: Response) {
+    async download(
+        @Param("id") id: string,
+        @CurrentUser() user: AuthUser,
+        @Req() req: Request,
+        @Res() res: Response,
+    ) {
+        // The actor is passed so the export is attributed to whoever actually
+        // downloaded it, which may differ from who requested the report.
         const { stream, fileName, fileSize } =
-            await this.reportsService.openDownload(id);
+            await this.reportsService.openDownload(id, user.id, {
+                ipAddress:
+                    req.ip ||
+                    (req.headers["x-forwarded-for"] as string)?.split(",")[0],
+                userAgent: req.headers["user-agent"],
+            });
 
         res.setHeader("Content-Type", contentTypeFor(fileName));
         res.setHeader(

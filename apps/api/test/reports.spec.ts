@@ -4,6 +4,7 @@ import { CacheService } from "@/modules/redis/cache.service";
 import { TenantContext } from "@/modules/tenant";
 import { ReportsService } from "@/modules/reports/reports.service";
 import { ReportQueueService } from "@/modules/queue";
+import { DomainEventsService } from "@/modules/events";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -39,7 +40,13 @@ function createService(options: { failEnqueue?: boolean } = {}) {
         },
     } as unknown as ReportQueueService;
 
-    const service = new ReportsService(db, tenantContext, queueStub);
+    // Domain events are a side effect of generating/downloading; a stub keeps
+    // this suite about the reports API itself.
+    const eventsStub = {
+        dataExported: () => undefined,
+    } as unknown as DomainEventsService;
+
+    const service = new ReportsService(db, tenantContext, queueStub, eventsStub);
     return { service, enqueued };
 }
 

@@ -111,7 +111,7 @@ export class AuthController {
     ): Promise<{ message: string }> {
         const refreshToken = req.cookies?.[REFRESH_COOKIE] as string | undefined;
         if (refreshToken) {
-            await this.authService.logout(refreshToken);
+            await this.authService.logout(refreshToken, this.sessionInfo(req));
         }
         this.clearRefreshCookie(res);
         return { message: "Logged out successfully" };
@@ -127,7 +127,7 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response,
     ): Promise<{ message: string }> {
         const user = (req as any).user;
-        await this.authService.logoutAll(user.id);
+        await this.authService.logoutAll(user.id, this.sessionInfo(req));
         this.clearRefreshCookie(res);
         return { message: "Logged out from all devices" };
     }

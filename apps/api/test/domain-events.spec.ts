@@ -4,7 +4,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { DomainEventsService } from "@/modules/events/domain-events.service";
 import { AuditListener } from "@/modules/events/listeners/audit.listener";
 import { AnalyticsListener } from "@/modules/events/listeners/analytics.listener";
-import { DOMAIN_EVENTS } from "@saas/shared-types";
+import { AUDIT_ACTIONS, DOMAIN_EVENTS } from "@saas/shared-types";
 
 /**
  * Listener behaviour over a real database.
@@ -118,7 +118,7 @@ describe("AuditListener", () => {
 
         const rows = await db.auditLog.findMany();
         expect(rows).toHaveLength(1);
-        expect(rows[0].action).toBe("user.created");
+        expect(rows[0].action).toBe(AUDIT_ACTIONS.CREATE_USER);
         expect(rows[0].tenantId).toBe(tenantId);
         expect(rows[0].entityId).toBe(userId);
         expect(rows[0].metadata).toMatchObject({ email: "new@example.com", source: "register" });
@@ -137,7 +137,7 @@ describe("AuditListener", () => {
 
         const rows = await db.auditLog.findMany();
         expect(rows).toHaveLength(1);
-        expect(rows[0].action).toBe("tenant.created");
+        expect(rows[0].action).toBe(AUDIT_ACTIONS.CREATE_TENANT);
         expect(rows[0].userId).toBe(userId);
         expect(rows[0].metadata).toMatchObject({ slug: "events-tenant" });
     });
@@ -161,7 +161,7 @@ describe("AuditListener", () => {
         await waitForRows("auditLog");
 
         const rows = await db.auditLog.findMany();
-        expect(rows[0].action).toBe("role.changed");
+        expect(rows[0].action).toBe(AUDIT_ACTIONS.CHANGE_ROLE);
         expect(rows[0].metadata).toMatchObject({
             previousRoleKey: "member",
             newRoleKey: "admin",
@@ -185,7 +185,7 @@ describe("AuditListener", () => {
         await waitForRows("auditLog");
 
         const rows = await db.auditLog.findMany();
-        expect(rows[0].action).toBe("report.failed");
+        expect(rows[0].action).toBe(AUDIT_ACTIONS.REPORT_COMPLETED);
         expect(rows[0].metadata).toMatchObject({ error: "disk full" });
     });
 
@@ -235,7 +235,7 @@ describe("AuditListener", () => {
 
         const rows = await db.auditLog.findMany();
         expect(rows).toHaveLength(1);
-        expect(rows[0].action).toBe("user.created");
+        expect(rows[0].action).toBe(AUDIT_ACTIONS.CREATE_USER);
         expect(rows[0].tenantId).toBeNull();
         expect(rows[0].userId).toBe(lonely.id);
     });
@@ -256,7 +256,7 @@ describe("AuditListener", () => {
 
         const rows = await db.auditLog.findMany();
         expect(rows).toHaveLength(1);
-        expect(rows[0].action).toBe("role.changed");
+        expect(rows[0].action).toBe(AUDIT_ACTIONS.CHANGE_ROLE);
         expect(rows[0].tenantId).toBeNull();
     });
 

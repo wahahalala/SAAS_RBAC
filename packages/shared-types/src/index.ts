@@ -14,3 +14,6 @@ export * from "./queue";
 
 // Domain event names and payloads (API emitters + listeners + worker bridge)
 export * from "./events";
+
+// Audit action vocabulary (writers + the audit query API)
+export * from "./audit";

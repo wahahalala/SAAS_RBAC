@@ -2,12 +2,15 @@ import { Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import {
     DOMAIN_EVENTS,
+    type DataExportedEvent,
     type DomainEventMap,
     type DomainEventName,
     type ReportCompletedEvent,
     type RoleChangedEvent,
+    type SessionEvent,
     type TenantCreatedEvent,
     type UserCreatedEvent,
+    type UserDeletedEvent,
 } from "@saas/shared-types";
 
 /**
@@ -76,5 +79,21 @@ export class DomainEventsService {
 
     reportCompleted(payload: Omit<ReportCompletedEvent, "occurredAt">): void {
         this.emit(DOMAIN_EVENTS.REPORT_COMPLETED, payload);
+    }
+
+    userDeleted(payload: Omit<UserDeletedEvent, "occurredAt">): void {
+        this.emit(DOMAIN_EVENTS.USER_DELETED, payload);
+    }
+
+    loggedIn(payload: Omit<SessionEvent, "occurredAt">): void {
+        this.emit(DOMAIN_EVENTS.USER_LOGGED_IN, payload);
+    }
+
+    loggedOut(payload: Omit<SessionEvent, "occurredAt">): void {
+        this.emit(DOMAIN_EVENTS.USER_LOGGED_OUT, payload);
+    }
+
+    dataExported(payload: Omit<DataExportedEvent, "occurredAt">): void {
+        this.emit(DOMAIN_EVENTS.DATA_EXPORTED, payload);
     }
 }
