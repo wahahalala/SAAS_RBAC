@@ -6,7 +6,7 @@
         "build": "turbo build",
         "lint": "turbo lint",
         "type-check": "turbo type-check",
-        "test": "turbo test",
+        "test": "turbo test --filter=api && turbo test --filter=worker && turbo test --filter=web",
         "clean": "turbo clean && rm -rf node_modules",
         "db:generate": "pnpm --filter api db:generate",
         "db:push": "pnpm --filter api db:push",
