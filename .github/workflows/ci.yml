@@ -92,7 +92,9 @@ jobs:
         run: pnpm lint
 
       - name: Unit and integration tests (api, worker, web)
-        run: pnpm test
+        run: |
+          node -e "console.log('DB present in test step:', process.env.DATABASE_URL ? 'YES len=' + process.env.DATABASE_URL.length : 'NO')"
+          pnpm test
 
   # ============================================================
   # End-to-end: Supertest against the real API, then Playwright
