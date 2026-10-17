@@ -79,6 +79,12 @@ jobs:
       - name: Apply migrations
         run: pnpm --filter api db:migrate:prod
 
+      # @saas/shared-types publishes its types from dist/ (see its
+      # package.json exports), so it must be built before consumers
+      # (e.g. @saas/shared) can run tsc against it in a clean checkout.
+      - name: Build workspace types package
+        run: pnpm --filter @saas/shared-types build
+
       - name: Type check
         run: pnpm type-check
 
@@ -137,6 +143,11 @@ jobs:
 
       - name: Apply migrations
         run: pnpm --filter api db:migrate:prod
+
+      # Build @saas/shared-types so its dist/ types are available to the
+      # API e2e (Jest + Supertest) in a clean checkout.
+      - name: Build workspace types package
+        run: pnpm --filter @saas/shared-types build
 
       - name: API e2e (Jest + Supertest)
         run: pnpm --filter api test:e2e
