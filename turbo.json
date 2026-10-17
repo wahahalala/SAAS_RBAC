@@ -1,6 +1,7 @@
 {
     "$schema": "https://turbo.build/schema.json",
     "globalDependencies": ["**/.env.*local"],
+    "globalEnv": ["DATABASE_URL", "REDIS_HOST", "REDIS_PORT", "REDIS_URL", "JWT_SECRET", "JWT_REFRESH_SECRET", "JWT_ACCESS_EXPIRATION", "JWT_REFRESH_EXPIRATION", "FRONTEND_URL", "API_ORIGIN", "REPORTS_DIR", "NEXT_TELEMETRY_DISABLED"],
     "tasks": {
         "build": {
             "dependsOn": ["^build"],
